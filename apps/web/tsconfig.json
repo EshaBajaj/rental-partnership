@@ -17,7 +17,6 @@
     "skipLibCheck": true,
     "noEmit": true,
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": { "@shared/*": ["../../supabase/functions/_shared/*"] }
   },
   "include": ["src", "test", "../../supabase/functions/_shared/*.ts", "vite.config.ts"]
