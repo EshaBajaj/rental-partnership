@@ -1,5 +1,5 @@
 // Tiny fetch client for the public Edge Functions (no supabase-js in the respondent bundle).
-import { FUNCTIONS_URL, SUPABASE_ANON_KEY } from '../lib/env.ts';
+import { DEMO_MODE, FUNCTIONS_URL, SUPABASE_ANON_KEY } from '../lib/env.ts';
 import type { FormConfig, RawAnswers, VoiceMime } from '@shared/types.ts';
 
 export class ApiError extends Error {
@@ -26,7 +26,7 @@ async function call<T>(path: string, init: RequestInit & { timeoutMs?: number } 
       },
     });
   } catch (e) {
-    throw new ApiError(0, 'network', (e as Error)?.message || 'Network error');
+    throw new ApiError(0, 'network', `Could not reach ${FUNCTIONS_URL}/${path.split('?')[0]} (${(e as Error)?.message || 'network error'})`);
   } finally {
     clearTimeout(timer);
   }
@@ -48,7 +48,13 @@ export interface FormResponse {
   form: { id: string; version: number; config: FormConfig } | null;
 }
 
-export const getForm = (slug: string) => call<FormResponse>(`form?slug=${encodeURIComponent(slug)}`, { method: 'GET' });
+export async function getForm(slug: string): Promise<FormResponse> {
+  if (DEMO_MODE) {
+    const { DEMO_CONFIG, DEMO_FORM_ID } = await import('./demo.ts');
+    return { status: 'open', property: { slug, name: 'Demo shop (not connected)', default_lang: 'en' }, form: { id: DEMO_FORM_ID, version: 1, config: DEMO_CONFIG } };
+  }
+  return call<FormResponse>(`form?slug=${encodeURIComponent(slug)}`, { method: 'GET' });
+}
 
 export interface SubmitPayload {
   id: string;
@@ -61,8 +67,13 @@ export interface SubmitPayload {
   duration_seconds: number;
   website: string;
 }
-export const submit = (p: SubmitPayload) =>
-  call<{ id: string; status: 'created' | 'existing' }>('submit', { method: 'POST', body: JSON.stringify(p), timeoutMs: 30_000 });
+export async function submit(p: SubmitPayload): Promise<{ id: string; status: 'created' | 'existing' }> {
+  if (DEMO_MODE) {
+    console.info('[demo mode] answers NOT sent anywhere:', p);
+    return { id: p.id, status: 'created' };
+  }
+  return call<{ id: string; status: 'created' | 'existing' }>('submit', { method: 'POST', body: JSON.stringify(p), timeoutMs: 30_000 });
+}
 
 export interface UploadUrlPayload {
   property_slug: string;
@@ -74,7 +85,9 @@ export interface UploadUrlPayload {
   duration_seconds: number;
 }
 export const voiceUploadUrl = (p: UploadUrlPayload) =>
-  call<{ path: string; signed_url: string; token: string }>('voice-upload-url', { method: 'POST', body: JSON.stringify(p) });
+  DEMO_MODE
+    ? Promise.reject(new ApiError(409, 'demo', 'Voice answers need the server (demo mode). Please type instead.'))
+    : call<{ path: string; signed_url: string; token: string }>('voice-upload-url', { method: 'POST', body: JSON.stringify(p) });
 
 export const transcribeNow = (response_id: string, question_key: string) =>
   call<{ text: string; language: string | null } | { pending: true }>('transcribe-now', {
@@ -113,6 +126,10 @@ export function track(slug: string, session: string, e: TrackEvent) {
 export function flushTrack() {
   if (timer) clearTimeout(timer);
   timer = null;
+  if (DEMO_MODE) {
+    queue = [];
+    return;
+  }
   if (!ctx || queue.length === 0) return;
   const events = queue.splice(0, 50);
   fetch(`${FUNCTIONS_URL}/track`, {

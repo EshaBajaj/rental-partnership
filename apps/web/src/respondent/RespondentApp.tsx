@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ERROR_TEXT, validateOne } from '@shared/answers.ts';
 import type { CompiledQuestion, ContactValue, RawAnswer } from '@shared/types.ts';
 import { ApiError, getForm, submit } from './api.ts';
+import { DEMO_MODE, FUNCTIONS_URL } from '../lib/env.ts';
 import { type Lang, t } from './i18n.ts';
 import { Questionnaire } from './Questionnaire.tsx';
 import { QuestionInput } from './inputs.tsx';
@@ -102,6 +103,7 @@ export function RespondentApp() {
       <Shell>
         <div className="card space-y-4 p-6 text-center">
           <p>{notFound ? t(lang, 'notFound') : t(lang, 'loadError')}</p>
+          {(import.meta.env.DEV || location.hostname === 'localhost') && <SetupHint error={form.error as ApiError | null} />}
           {!notFound && <button className="btn-primary w-full" onClick={() => void form.refetch()}>{t(lang, 'retry')}</button>}
         </div>
       </Shell>
@@ -124,6 +126,12 @@ export function RespondentApp() {
     : { v: 1, slug, response_id: uuid(), form_version_id: data.form.id, answers: {}, current: null, started_at: Date.now(), lang, voice: {} };
 
   return (
+    <>
+    {DEMO_MODE && (
+      <div className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-900">
+        Demo mode — not connected to Supabase. Answers stay on this device. Set VITE_SUPABASE_URL to go live.
+      </div>
+    )}
     <Questionnaire
       key={data.form.id}
       slug={slug}
@@ -137,6 +145,28 @@ export function RespondentApp() {
       onQueued={outbox.markQueued}
       onFormChanged={() => void qc.invalidateQueries({ queryKey: ['form', slug] })}
     />
+    </>
+  );
+}
+
+/** Shown only on localhost / dev builds: what exactly failed and how to fix it. */
+function SetupHint({ error }: { error: ApiError | null }) {
+  const why =
+    !error ? '' :
+    error.status === 0 ? 'The server could not be reached. Is VITE_SUPABASE_URL the full https://<ref>.supabase.co address, and are the Edge Functions deployed (docs/DEPLOY.md step 4)?' :
+    error.status === 404 && error.code === 'not_found' ? 'The server works, but no property with this slug exists. Run supabase/seed.sql or open /f/<your-slug>.' :
+    error.status === 404 ? 'The "form" Edge Function is not deployed on this project (docs/DEPLOY.md step 4).' :
+    error.status === 503 ? 'The form has never been published. Sign in at /admin → Form → Publish.' :
+    error.status === 401 || error.status === 403 ? 'The function rejected the request. Deploy the functions with --no-verify-jwt (docs/DEPLOY.md).' :
+    'See the browser console for details.';
+  return (
+    <div className="rounded-xl bg-stone-100 p-3 text-left text-xs text-stone-700">
+      <p className="font-semibold">Setup help (only shown on localhost)</p>
+      <p className="mt-1">Server: <code className="break-all">{FUNCTIONS_URL}</code></p>
+      {error && <p className="mt-1 break-all">Error: {error.status ? `HTTP ${error.status} ${error.code}` : error.message}</p>}
+      <p className="mt-1">{why}</p>
+      <p className="mt-1">Want to try the form without a server? Remove VITE_SUPABASE_URL from apps/web/.env.local (or set VITE_DEMO=1) and restart npm run dev.</p>
+    </div>
   );
 }
 

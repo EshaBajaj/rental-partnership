@@ -5,6 +5,7 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
   readonly VITE_FUNCTIONS_URL?: string;
   readonly VITE_DEFAULT_SLUG?: string;
+  readonly VITE_DEMO?: string;
 }
 interface ImportMeta {
   readonly env: ImportMetaEnv;
