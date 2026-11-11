@@ -1,0 +1,9 @@
+{
+  "imports": {
+    "zod": "npm:zod@3.25.76",
+    "libphonenumber-js/min": "npm:libphonenumber-js@1.13.16/min",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.119.0"
+  },
+  "compilerOptions": { "strict": true, "lib": ["deno.window", "deno.unstable"] },
+  "lint": { "rules": { "exclude": ["no-explicit-any"] } }
+}
