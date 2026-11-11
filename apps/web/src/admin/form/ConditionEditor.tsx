@@ -21,6 +21,7 @@ import {
   toggleGroupKind,
   type TreePath,
 } from './conditionValue.ts';
+import { Icon } from '../../lib/icons.tsx';
 
 let uid = 0;
 const nextId = () => `ce-${++uid}`;
@@ -36,7 +37,7 @@ function NumberInput({ value, onChange, label }: { value: unknown; onChange: (n:
     <input
       aria-label={label}
       inputMode="decimal"
-      className="input w-32 py-1.5"
+      className="input w-28 sm:w-32"
       value={text}
       onChange={(e) => {
         setText(e.target.value);
@@ -49,7 +50,7 @@ function NumberInput({ value, onChange, label }: { value: unknown; onChange: (n:
 
 export function ValueEditor({ refQ, op, value, onChange }: { refQ: RefQuestion | undefined; op: Op; value: unknown; onChange: (v: unknown) => void }) {
   if (NO_VALUE_OPS.includes(op)) return null;
-  if (!refQ) return <input aria-label="Value" className="input w-40 py-1.5" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+  if (!refQ) return <input aria-label="Value" className="input w-full sm:w-40" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
   if (isChoice(refQ)) {
     const opts = choiceOptions(refQ);
     if (LIST_OPS.includes(op)) {
@@ -60,8 +61,12 @@ export function ValueEditor({ refQ, op, value, onChange }: { refQ: RefQuestion |
             const on = sel.includes(o.value);
             if (o.archived && !on) return null;
             return (
-              <label key={o.value} className={`flex cursor-pointer items-center gap-1 rounded-full px-2 py-1 text-xs ring-1 ${on ? 'bg-brand-50 ring-brand-500' : 'ring-stone-300'} ${o.archived ? 'line-through' : ''}`}>
+              <label
+                key={o.value}
+                className={`flex min-h-10 cursor-pointer items-center gap-1 rounded-full px-3 text-sm ring-1 focus-within:ring-2 focus-within:ring-brand-500 ${on ? 'bg-brand-50 text-brand-800 ring-brand-500' : 'bg-white text-stone-700 ring-stone-300'} ${o.archived ? 'line-through' : ''}`}
+              >
                 <input type="checkbox" className="sr-only" checked={on} onChange={() => onChange(on ? sel.filter((x) => x !== o.value) : [...sel, o.value])} />
+                {on && <Icon name="tick" size={14} />}
                 {o.label_en}
               </label>
             );
@@ -70,7 +75,7 @@ export function ValueEditor({ refQ, op, value, onChange }: { refQ: RefQuestion |
       );
     }
     return (
-      <select aria-label="Value" className="input w-auto py-1.5" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+      <select aria-label="Value" className="input w-full sm:w-auto sm:max-w-[16rem]" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
         <option value="">— pick —</option>
         {opts.map((o) => (
           <option key={o.value} value={o.value} disabled={o.archived && o.value !== value}>
@@ -85,7 +90,7 @@ export function ValueEditor({ refQ, op, value, onChange }: { refQ: RefQuestion |
     if (op === 'between') {
       const v = Array.isArray(value) ? value : ['', ''];
       return (
-        <span className="flex items-center gap-1">
+        <span className="flex flex-wrap items-center gap-2">
           <NumberInput label="From" value={v[0]} onChange={(n) => onChange([n, v[1]])} /> and <NumberInput label="To" value={v[1]} onChange={(n) => onChange([v[0], n])} />
         </span>
       );
@@ -96,15 +101,15 @@ export function ValueEditor({ refQ, op, value, onChange }: { refQ: RefQuestion |
     if (op === 'between') {
       const v = Array.isArray(value) ? value : ['', ''];
       return (
-        <span className="flex items-center gap-1">
-          <input aria-label="From" type="date" className="input w-auto py-1.5" value={String(v[0] ?? '')} onChange={(e) => onChange([e.target.value, v[1]])} /> and{' '}
-          <input aria-label="To" type="date" className="input w-auto py-1.5" value={String(v[1] ?? '')} onChange={(e) => onChange([v[0], e.target.value])} />
+        <span className="flex flex-wrap items-center gap-2">
+          <input aria-label="From" type="date" className="input w-auto" value={String(v[0] ?? '')} onChange={(e) => onChange([e.target.value, v[1]])} /> and{' '}
+          <input aria-label="To" type="date" className="input w-auto" value={String(v[1] ?? '')} onChange={(e) => onChange([v[0], e.target.value])} />
         </span>
       );
     }
-    return <input aria-label="Value" type="date" className="input w-auto py-1.5" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+    return <input aria-label="Value" type="date" className="input w-auto" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
   }
-  return <input aria-label="Value" className="input w-48 py-1.5" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+  return <input aria-label="Value" className="input w-full sm:w-48" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
 }
 
 /** One {q, op, v} row. `refs` = questions that may be referenced. */
@@ -127,14 +132,14 @@ export function ConditionRow({
   const ops = refQ ? opsFor(refQ) : (['answered', 'not_answered'] as Op[]);
   const id = nextId();
   return (
-    <div className={`rounded-xl border p-2 ${error?.length ? 'border-red-300 bg-red-50' : 'border-stone-200 bg-white'}`}>
+    <div className={`min-w-0 rounded-xl border p-2 ${error?.length ? 'border-red-300 bg-red-50' : 'border-stone-200 bg-white'}`}>
       <div className="flex flex-wrap items-center gap-2">
         <label className="sr-only" htmlFor={`${id}-q`}>
           Question
         </label>
         <select
           id={`${id}-q`}
-          className="input w-auto max-w-[16rem] py-1.5"
+          className="input w-full sm:w-auto sm:max-w-[16rem]"
           value={cond.q}
           onChange={(e) => {
             const r = refs.find((x) => x.key === e.target.value);
@@ -154,7 +159,7 @@ export function ConditionRow({
         </label>
         <select
           id={`${id}-op`}
-          className="input w-auto py-1.5"
+          className="input w-full sm:w-auto"
           value={cond.op}
           onChange={(e) => {
             const op = e.target.value as Op;
@@ -172,14 +177,15 @@ export function ConditionRow({
         <ValueEditor refQ={refQ} op={cond.op} value={cond.v} onChange={(v) => onChange({ q: cond.q, op: cond.op, v })} />
         {extra}
         {onRemove && (
-          <button type="button" className="btn-ghost ml-auto px-2 py-1 text-stone-500" onClick={onRemove} aria-label="Remove condition">
-            ✕
+          <button type="button" className="btn-ghost btn-icon btn-sm ml-auto text-stone-500 hover:text-red-700" onClick={onRemove} aria-label="Remove condition" title="Remove condition">
+            <Icon name="close" />
           </button>
         )}
       </div>
       {error?.map((m) => (
-        <p key={m} className="mt-1 text-xs text-red-700">
-          {m}
+        <p key={m} className="mt-1 flex gap-1.5 text-xs text-red-700">
+          <Icon name="alert" size={14} className="mt-px" />
+          <span className="min-w-0">{m}</span>
         </p>
       ))}
     </div>
@@ -198,13 +204,19 @@ function GroupEditor({ root, path, refs, onChange }: { root: ShowIf; path: TreeP
     <div className={`space-y-2 rounded-xl ${path.length ? 'border border-dashed border-stone-300 bg-stone-50 p-2' : ''}`}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span>Show when</span>
-        <button type="button" className="rounded-full bg-stone-200 px-3 py-0.5 font-medium" onClick={() => onChange(replaceAt(root, path, toggleGroupKind(g)))}>
+        <button
+          type="button"
+          className="btn-secondary btn-sm font-semibold text-brand-800"
+          title="Switch between ALL and ANY"
+          onClick={() => onChange(replaceAt(root, path, toggleGroupKind(g)))}
+        >
           {'all' in g ? 'ALL' : 'ANY'}
         </button>
         <span>of these are true</span>
         {path.length > 0 && (
-          <button type="button" className="ml-auto text-xs text-stone-500 underline" onClick={() => onChange(replaceAt(root, path, null))}>
-            remove group
+          <button type="button" className="btn-ghost btn-sm ml-auto text-stone-600" onClick={() => onChange(replaceAt(root, path, null))}>
+            <Icon name="close" size={16} />
+            Remove group
           </button>
         )}
       </div>
@@ -221,18 +233,20 @@ function GroupEditor({ root, path, refs, onChange }: { root: ShowIf; path: TreeP
           <GroupEditor key={i} root={root} path={[...path, i]} refs={refs} onChange={onChange} />
         ),
       )}
-      <div className="flex gap-2">
-        <button type="button" className="btn-secondary px-3 py-1 text-sm" disabled={!firstRef} onClick={() => onChange(appendAt(root, path, newCondition(firstRef, firstRef?.key ?? '')))}>
-          + Condition
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn-secondary btn-sm" disabled={!firstRef} onClick={() => onChange(appendAt(root, path, newCondition(firstRef, firstRef?.key ?? '')))}>
+          <Icon name="add" size={16} />
+          Condition
         </button>
         {path.length < MAX_DEPTH - 1 && (
           <button
             type="button"
-            className="btn-ghost px-3 py-1 text-sm"
+            className="btn-ghost btn-sm"
             disabled={!firstRef}
             onClick={() => onChange(appendAt(root, path, { [('all' in g ? 'any' : 'all') as 'all']: [newCondition(firstRef, firstRef?.key ?? '')] } as ShowIf))}
           >
-            + Group
+            <Icon name="add" size={16} />
+            Group
           </button>
         )}
       </div>
@@ -247,7 +261,8 @@ export function ShowIfEditor({ value, refs, onChange }: { value: ShowIf | null; 
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-stone-600">Always shown.</span>
         {refs.length ? (
-          <button type="button" className="btn-secondary px-3 py-1 text-sm" onClick={() => onChange({ all: [newCondition(refs[0], refs[0].key)] })}>
+          <button type="button" className="btn-secondary btn-sm" onClick={() => onChange({ all: [newCondition(refs[0], refs[0].key)] })}>
+            <Icon name="filter" size={16} />
             Only show when…
           </button>
         ) : (
@@ -259,11 +274,11 @@ export function ShowIfEditor({ value, refs, onChange }: { value: ShowIf | null; 
   return (
     <div className="space-y-2">
       <GroupEditor root={value} path={[]} refs={refs} onChange={(s) => onChange(groupItems(s).length ? s : null)} />
-      <div className="flex gap-3 text-xs">
-        <button type="button" className="text-stone-500 underline" onClick={() => onChange(pruneShowIf(value))}>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn-ghost btn-sm text-stone-600" onClick={() => onChange(pruneShowIf(value))}>
           Tidy empty groups
         </button>
-        <button type="button" className="text-red-600 underline" onClick={() => onChange(null)}>
+        <button type="button" className="btn-ghost btn-sm text-red-700 hover:bg-red-50" onClick={() => onChange(null)}>
           Always show (remove conditions)
         </button>
       </div>

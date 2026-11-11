@@ -73,7 +73,6 @@ export function BrandSettings() {
   return (
     <section className="card space-y-4 p-4">
       <div>
-        <h2 className="font-semibold">Brand &amp; trust</h2>
         <p className="text-sm text-stone-600">
           Shown quietly to respondents so they know who they are talking to: “Your answers go only to {f.brand_name || '…'}”, the number you will call from, and your shop photo.
         </p>
@@ -147,14 +146,14 @@ export function BrandSettings() {
 
       <div>
         <p className="label">How the welcome screen starts</p>
-        <div className="mx-auto max-w-[360px] overflow-hidden rounded-2xl border border-stone-200 bg-[#FAF8F4]">
+        <div className="mx-auto max-w-[360px] overflow-hidden rounded-2xl border border-stone-200 bg-bg">
           {property.shop_photo_url && <img src={property.shop_photo_url} alt="" className="h-40 w-full object-cover" />}
           <div className="space-y-2 p-4">
             <div className="flex items-center gap-2">
               {property.logo_url && <img src={property.logo_url} alt="" className="h-8 w-8 rounded-md object-contain" />}
               <span className="text-sm text-stone-600">{f.brand_name}</span>
             </div>
-            <p className="text-lg font-semibold text-[#1C2430]">{f.welcome_title_en || property.name}</p>
+            <p className="text-lg font-semibold text-ink">{f.welcome_title_en || property.name}</p>
             {f.welcome_body_en && <p className="text-sm text-stone-600">{f.welcome_body_en}</p>}
             <p className="text-xs text-stone-500">About 2 minutes · No sign-up needed</p>
             <p className="text-xs text-stone-500">Your answers go only to {f.brand_name}. We'll call only about this shop.</p>
@@ -199,12 +198,12 @@ function ImagePicker({ field, label, prefix }: { field: 'logo_url' | 'shop_photo
       <p className="label">{label}</p>
       {current ? <img src={current} alt={label} className="mb-2 h-28 w-full rounded-lg object-contain bg-stone-50" /> : <p className="mb-2 text-sm text-stone-500">None yet.</p>}
       <div className="flex flex-wrap gap-2">
-        <label className="btn-secondary cursor-pointer px-3 py-1.5 text-sm">
+        <label className="btn-secondary btn-sm cursor-pointer">
           {busy ? 'Uploading…' : current ? 'Replace' : 'Upload'}
           <input type="file" accept={ACCEPTED.join(',')} className="sr-only" disabled={busy} onChange={(e) => void onFile(e.target.files?.[0])} />
         </label>
         {current && (
-          <button className="btn-ghost px-3 py-1.5 text-sm text-red-700" disabled={busy} onClick={() => void setUrl(null).then(() => toast(`${label} removed`, 'success'), (e) => toast(errMsg(e), 'error'))}>
+          <button className="btn-ghost btn-sm text-red-700" disabled={busy} onClick={() => void setUrl(null).then(() => toast(`${label} removed`, 'success'), (e) => toast(errMsg(e), 'error'))}>
             Remove
           </button>
         )}

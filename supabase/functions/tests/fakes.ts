@@ -56,6 +56,7 @@ export function fakeDeps(over: {
   transcribe?: (signal: AbortSignal) => Promise<TranscribeResult>;
   translate?: (text: string) => Promise<string>;
   send?: (html: string) => Promise<void>;
+  messengerEnabled?: boolean;
   admin?: boolean;
   owner?: string | null;
   invite?: (email: string) => Promise<{ id: string; invited: boolean }>;
@@ -97,7 +98,7 @@ export function fakeDeps(over: {
       translateToEnglish: async (t) => (over.translate ? over.translate(t) : `EN:${t}`),
       listModels: async () => ['whisper-large-v3', 'llama-3.1-8b-instant'],
     },
-    messenger: { send: async (h) => (over.send ? over.send(h) : void calls.sent.push(h)) },
+    messenger: { enabled: over.messengerEnabled ?? true, send: async (h) => (over.send ? over.send(h) : void calls.sent.push(h)) },
     env: { ipSalt: 'salt', cronSecret: 'cron-secret-0123456789', serviceRoleKey: 'service-key', adminAppUrl: 'https://app.example', allowedOrigins: [] },
     now: over.now ?? (() => Date.now()),
     waitUntil: (p) => void calls.waited.push(p),

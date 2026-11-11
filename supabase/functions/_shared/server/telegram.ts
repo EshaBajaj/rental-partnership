@@ -3,6 +3,7 @@ import { type Messenger, UpstreamError } from './deps.ts';
 
 export function createTelegram(token: string, chatId: string, fetchFn: typeof fetch = fetch): Messenger {
   return {
+    enabled: Boolean(token && chatId),
     async send(html: string) {
       if (!token || !chatId) throw new UpstreamError(503, 'TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are not set');
       const ctl = new AbortController();

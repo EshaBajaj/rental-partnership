@@ -10,6 +10,7 @@ import { ApiError, track, transcribeNow, uploadAudio, voiceUploadUrl } from './a
 import { type Recording, startRecording, voiceSupported } from './recorder.ts';
 import { getRecognitionCtor, isNearSilent, joinTranscript, shouldOfferClearerVersion, speechLangFor, type SpeechRecognitionLike } from './speech.ts';
 import { type Lang, t } from './i18n.ts';
+import { Icon } from '../lib/icons.tsx';
 
 export interface VoiceCtx {
   slug: string;
@@ -289,10 +290,7 @@ export function SpeakAnswer({ q, speak, maxChars, lang, value, onChange, ctx, up
         ) : (
           <button type="button" onClick={() => void begin()} disabled={busy || !canSpeak || (speak.keep_audio && left <= 0 && !ctx.preview)}
             className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-primary-ink disabled:opacity-40" aria-label={t(lang, 'speak')}>
-            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <rect x="9" y="2" width="6" height="12" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0M12 18v4" />
-            </svg>
+            <Icon name="mic" size={28} />
           </button>
         )}
         <p className="text-sm text-muted" aria-live="polite">

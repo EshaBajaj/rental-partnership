@@ -10,10 +10,26 @@ import { download, Empty, ErrorBox, Spinner, TIER_LABEL, useConfirm, useDebounce
 import { applyFilters, type BoardFilters, countActive, DEFAULT_FILTERS, normaliseFilters } from './filters.ts';
 import { leadsToCsv } from './csv.ts';
 import { LeadCard, PATH_LABEL } from './LeadCard.tsx';
+import { LeadTable } from './LeadTable.tsx';
+import { Select } from '../Select.tsx';
 import { STATUS_LABEL } from './leadMutations.tsx';
+import { Icon } from '../../lib/icons.tsx';
 
 const LIMIT = 500;
 const FILTER_KEY = 'sls.admin.boardFilters';
+const VIEW_KEY = 'sls.admin.boardView';
+type View = 'table' | 'cards';
+
+function loadView(): View {
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    if (v === 'table' || v === 'cards') return v;
+  } catch {
+    /* private mode */
+  }
+  // spreadsheet on wide screens, cards on phones
+  return typeof window !== 'undefined' && window.innerWidth >= 768 ? 'table' : 'cards';
+}
 
 function loadFilters(): BoardFilters {
   try {
@@ -29,6 +45,15 @@ export function Board() {
   const toast = useToast();
   const [filters, setFilters] = useState<BoardFilters>(loadFilters);
   const [showFilters, setShowFilters] = useState(false);
+  const [view, setViewState] = useState<View>(loadView);
+  const setView = (v: View) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* private mode */
+    }
+  };
   const debounced = useDebounced(filters, 300);
   useEffect(() => {
     try {
@@ -99,18 +124,14 @@ export function Board() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-semibold">Leads</h1>
-        <div className="flex gap-1 text-sm">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="page-title mr-auto">Leads</h1>
+        <div className="flex w-full gap-1.5 sm:w-auto" role="group" aria-label="Filter by tier">
           {(['ideal', 'maybe', 'no'] as Tier[]).map((t) => (
-            <button
-              key={t}
-              className={`rounded-full px-3 py-1 ring-1 ${filters.tiers.includes(t) ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white ring-stone-300'}`}
-              onClick={() => set('tiers', toggle(filters.tiers, t))}
-              aria-pressed={filters.tiers.includes(t)}
-            >
-              {TIER_LABEL[t]} {leads.data ? `(${counts[t]})` : ''}
-            </button>
+            <Chip key={t} on={filters.tiers.includes(t)} onClick={() => set('tiers', toggle(filters.tiers, t))} grow>
+              {TIER_LABEL[t]}
+              {leads.data ? <span className={`tabular-nums ${filters.tiers.includes(t) ? 'text-brand-100' : 'text-stone-500'}`}>{counts[t]}</span> : null}
+            </Chip>
           ))}
         </div>
       </div>
@@ -120,24 +141,51 @@ export function Board() {
           <label className="sr-only" htmlFor="search">
             Search name or phone
           </label>
-          <input id="search" className="input min-w-0 flex-1" placeholder="Search name or phone" value={filters.q} onChange={(e) => set('q', e.target.value)} />
-          <button className="btn-secondary" onClick={() => setShowFilters((s) => !s)} aria-expanded={showFilters}>
-            Filters{active ? ` (${active})` : ''}
+          <div className="relative min-w-0 basis-full sm:basis-0 sm:flex-1">
+            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input id="search" type="search" className="input h-10 py-0 pl-10" placeholder="Search name or phone" value={filters.q} onChange={(e) => set('q', e.target.value)} />
+          </div>
+          <button
+            className={`btn-secondary flex-1 sm:flex-none ${showFilters || active ? 'border-brand-300 text-brand-800' : ''}`}
+            onClick={() => setShowFilters((s) => !s)}
+            aria-expanded={showFilters}
+            aria-controls="board-filters"
+          >
+            <Icon name="filter" />
+            Filters
+            {active > 0 && <span className="rounded-full bg-brand-700 px-1.5 text-xs font-semibold leading-5 text-white tabular-nums">{active}</span>}
+            <Icon name="down" size={16} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
           </button>
           {active > 0 && (
             <button className="btn-ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>
+              <Icon name="close" size={16} />
               Clear
             </button>
           )}
-          <button className="btn-secondary" onClick={exportCsv} disabled={!leads.data?.length}>
+          <div className="inline-flex h-10 rounded-xl bg-stone-100 p-1" role="group" aria-label="Layout">
+            {(['table', 'cards'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${view === v ? 'bg-white text-brand-800 shadow-sm' : 'text-stone-600 hover:text-stone-900'}`}
+              >
+                <Icon name={v} size={16} />
+                {v === 'table' ? 'Table' : 'Cards'}
+              </button>
+            ))}
+          </div>
+          <button className="btn-secondary flex-1 sm:flex-none" onClick={exportCsv} disabled={!leads.data?.length}>
+            <Icon name="download" />
             Export CSV
           </button>
         </div>
         {showFilters && (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div id="board-filters" className="mt-3 grid gap-4 border-t border-stone-100 pt-3 sm:grid-cols-2 lg:grid-cols-3">
             <fieldset>
               <legend className="label">Status</legend>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1.5">
                 {PIPELINE_STATUSES.map((s) => (
                   <Chip key={s} on={filters.statuses.includes(s)} onClick={() => set('statuses', toggle<PipelineStatus>(filters.statuses, s))}>
                     {STATUS_LABEL[s]}
@@ -147,7 +195,7 @@ export function Board() {
             </fieldset>
             <fieldset>
               <legend className="label">Wants to</legend>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1.5">
                 {(['rent', 'partner', 'either', 'waitlist'] as ResponsePathValue[]).map((p) => (
                   <Chip key={p} on={filters.paths.includes(p)} onClick={() => set('paths', toggle(filters.paths, p))}>
                     {PATH_LABEL[p]}
@@ -156,38 +204,35 @@ export function Board() {
               </div>
             </fieldset>
             <div>
-              <label className="label" htmlFor="f-profile">
-                Best profile
-              </label>
-              <select id="f-profile" className="input" value={filters.profile} onChange={(e) => set('profile', e.target.value)}>
-                <option value="">Any</option>
-                {(profileNames.data ?? []).map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+              <span className="label">Best profile</span>
+              <Select
+                label="Best profile"
+                className="w-full"
+                value={filters.profile}
+                options={[{ value: '', label: 'Any profile' }, ...(profileNames.data ?? []).map((n) => ({ value: n, label: n }))]}
+                onChange={(v) => set('profile', v)}
+              />
             </div>
             <div className="flex gap-2">
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <label className="label" htmlFor="f-from">
                   From
                 </label>
                 <input id="f-from" type="date" className="input" value={filters.from} onChange={(e) => set('from', e.target.value)} />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <label className="label" htmlFor="f-to">
                   To
                 </label>
                 <input id="f-to" type="date" className="input" value={filters.to} onChange={(e) => set('to', e.target.value)} />
               </div>
             </div>
-            <div className="flex flex-col justify-end gap-1 text-sm">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={filters.includeDuplicates} onChange={(e) => set('includeDuplicates', e.target.checked)} /> Include duplicates
+            <div className="flex flex-col justify-end text-sm text-stone-700">
+              <label className="flex min-h-10 cursor-pointer items-center gap-2">
+                <input type="checkbox" className="h-4 w-4 accent-brand-700" checked={filters.includeDuplicates} onChange={(e) => set('includeDuplicates', e.target.checked)} /> Include duplicates
               </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={filters.includeBots} onChange={(e) => set('includeBots', e.target.checked)} /> Include suspected bots
+              <label className="flex min-h-10 cursor-pointer items-center gap-2">
+                <input type="checkbox" className="h-4 w-4 accent-brand-700" checked={filters.includeBots} onChange={(e) => set('includeBots', e.target.checked)} /> Include suspected bots
               </label>
             </div>
           </div>
@@ -203,11 +248,15 @@ export function Board() {
         <Empty>{active ? 'No leads match these filters.' : 'No leads yet. Share the QR code (Settings → QR poster) to start collecting.'}</Empty>
       ) : (
         <>
-          <div className="grid gap-3 lg:grid-cols-2">
-            {leads.data.map((l) => (
-              <LeadCard key={l.id} lead={l} />
-            ))}
-          </div>
+          {view === 'table' ? (
+            <LeadTable leads={leads.data} />
+          ) : (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {leads.data.map((l) => (
+                <LeadCard key={l.id} lead={l} />
+              ))}
+            </div>
+          )}
           {leads.data.length >= LIMIT && <p className="text-center text-sm text-stone-500">Showing the top {LIMIT}. Use filters or Export CSV to see more.</p>}
         </>
       )}
@@ -215,9 +264,17 @@ export function Board() {
   );
 }
 
-function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({ on, onClick, children, grow }: { on: boolean; onClick: () => void; children: React.ReactNode; grow?: boolean }) {
   return (
-    <button type="button" aria-pressed={on} onClick={onClick} className={`rounded-full px-3 py-1 text-sm ring-1 ${on ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white ring-stone-300'}`}>
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm font-medium ring-1 transition ${grow ? 'flex-1 sm:flex-none' : ''} ${
+        on ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-stone-700 ring-stone-300 hover:bg-stone-50 hover:ring-stone-400'
+      }`}
+    >
+      {on && <Icon name="tick" size={16} />}
       {children}
     </button>
   );
@@ -252,22 +309,22 @@ function SavedViews({ filters, onApply }: { filters: BoardFilters; onApply: (f: 
     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-3 text-sm">
       <span className="text-stone-500">Saved views:</span>
       {(views.data ?? []).map((v) => (
-        <span key={v.id} className="inline-flex items-center rounded-full bg-stone-100">
-          <button className="px-3 py-1 hover:underline" onClick={() => onApply(normaliseFilters(v.filters))}>
+        <span key={v.id} className="inline-flex h-10 items-center rounded-full bg-stone-100 ring-1 ring-stone-200">
+          <button className="h-full rounded-l-full pl-3.5 pr-1 font-medium text-stone-800 hover:text-brand-800" onClick={() => onApply(normaliseFilters(v.filters))}>
             {v.name}
           </button>
           <button
-            className="px-2 py-1 text-stone-400 hover:text-red-600"
+            className="flex h-full w-9 items-center justify-center rounded-r-full text-stone-400 hover:text-red-600"
             aria-label={`Delete view ${v.name}`}
             onClick={async () => (await confirm({ title: 'Delete saved view?', body: `“${v.name}” will be removed.`, confirm: 'Delete', danger: true })) && del.mutate(v.id)}
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </span>
       ))}
       {!views.data?.length && <span className="text-stone-400">none</span>}
       <form
-        className="ml-auto flex gap-1"
+        className="flex w-full gap-2 sm:ml-auto sm:w-auto"
         onSubmit={(e) => {
           e.preventDefault();
           if (name.trim()) save.mutate();
@@ -276,9 +333,10 @@ function SavedViews({ filters, onApply }: { filters: BoardFilters; onApply: (f: 
         <label className="sr-only" htmlFor="view-name">
           New view name
         </label>
-        <input id="view-name" className="input w-36 py-1 text-sm" placeholder="Name this view" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
-        <button className="btn-secondary px-3 py-1 text-sm" disabled={!name.trim() || save.isPending}>
-          Save
+        <input id="view-name" className="input h-10 min-w-0 flex-1 py-0 text-sm sm:w-40 sm:flex-none" placeholder="Name this view" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
+        <button className="btn-secondary" disabled={!name.trim() || save.isPending}>
+          <Icon name="add" size={16} />
+          Save view
         </button>
       </form>
     </div>

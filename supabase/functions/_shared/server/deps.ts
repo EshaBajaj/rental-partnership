@@ -130,6 +130,8 @@ export interface Speech {
 }
 
 export interface Messenger {
+  /** false when no channel is configured: lead alerts are skipped, not failed. */
+  enabled: boolean;
   send(html: string): Promise<void>;
 }
 

@@ -2,16 +2,8 @@
 // type changes, publish and versions.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { closestCenter, DndContext, type DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { format } from 'date-fns';
 import { classifyKindChange } from '@shared/edit-safety.ts';
 import type { QuestionKind } from '@shared/types.ts';
@@ -22,6 +14,9 @@ import { errMsg, must, qk, rpc, supabase } from '../api.ts';
 import { useAdmin } from '../context.tsx';
 import type { FormVersionRow, OptionRow, QuestionRow } from '../types.ts';
 import { Badge, ErrorBox, Modal, Sheet, Spinner, useConfirm, useToast } from '../ui.tsx';
+import { buzzOnPickUp, liftedClass, useHoldToReorderSensors } from '../sortable.ts';
+import { Icon } from '../../lib/icons.tsx';
+import { ReorderHint, rowListeners } from './reorder.tsx';
 import { useAutosave } from './autosave.ts';
 import { describeShowIf } from './conditionValue.ts';
 import { QuestionEditor } from './QuestionEditor.tsx';
@@ -80,7 +75,7 @@ export default function FormBuilder() {
   const generalIssues = issues.filter((i) => !i.question_key || !active.some((q) => q.key === i.question_key));
   const blocked = hasErrors(issues);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const sensors = useHoldToReorderSensors();
 
   if (questionsQ.isLoading || !rows) return questionsQ.error ? <ErrorBox error={questionsQ.error} onRetry={() => questionsQ.refetch()} /> : <Spinner />;
 
@@ -217,7 +212,7 @@ export default function FormBuilder() {
               ))}
             </ul>
             {liveOnly.length > 0 && (
-              <p className="rounded-lg bg-amber-50 p-2 text-amber-800">
+              <p className="rounded-lg bg-amber-50 p-3 text-amber-800">
                 Your published Ideal Profiles use it. A new profiles draft will be created and the condition removed there; publish the draft on the Profiles page to apply it.
               </p>
             )}
@@ -290,8 +285,9 @@ export default function FormBuilder() {
             Screens per path — rent {screens.rent}, partner {screens.partner}, either {screens.either}.
           </p>
           {warn.map((w, i) => (
-            <p key={i} className="text-amber-800">
-              ℹ {w.message}
+            <p key={i} className="flex gap-2 text-amber-800">
+              <Icon name="info" className="mt-0.5" />
+              {w.message}
             </p>
           ))}
         </>
@@ -315,9 +311,10 @@ export default function FormBuilder() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-semibold">Questions</h1>
-        <a className="btn-ghost text-sm" href={`/f/${property.slug}`} target="_blank" rel="noreferrer">
-          Open live form ↗
+        <h1 className="page-title mr-auto">Questions</h1>
+        <a className="btn-ghost" href={`/f/${property.slug}`} target="_blank" rel="noreferrer">
+          <Icon name="external" />
+          Live form
         </a>
         <button className="btn-secondary" onClick={() => setShowVersions(true)}>
           Versions
@@ -327,24 +324,28 @@ export default function FormBuilder() {
         </button>
       </div>
 
-      <div className={`card p-3 text-sm ${blocked ? 'border-red-300' : ''}`}>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className={blocked ? 'font-medium text-red-700' : 'font-medium text-emerald-700'}>
+      <div className={`card p-3 text-sm sm:p-4 ${blocked ? 'border-red-300' : ''}`}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className={`flex items-center gap-1.5 font-medium ${blocked ? 'text-red-700' : 'text-emerald-700'}`}>
+            <Icon name={blocked ? 'alert' : 'ok'} />
             {blocked ? `${issues.filter((i) => i.level === 'error').length} problem(s) to fix before publishing` : 'Ready to publish'}
           </span>
-          <span className="text-stone-500">Screens:</span>
-          {(['rent', 'partner', 'either'] as const).map((p) => (
-            <Badge key={p} tone={screens[p] > MAX_SCREENS ? 'amber' : 'stone'}>
-              {p} {screens[p]}
-            </Badge>
-          ))}
-          <span className="ml-auto">{saver.busy ? 'Saving…' : saver.anyError ? <span className="text-red-700">Some changes are not saved</span> : 'All changes saved'}</span>
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="text-stone-500">Screens:</span>
+            {(['rent', 'partner', 'either'] as const).map((p) => (
+              <Badge key={p} tone={screens[p] > MAX_SCREENS ? 'amber' : 'stone'}>
+                {p} {screens[p]}
+              </Badge>
+            ))}
+          </span>
+          <span className="text-stone-500 sm:ml-auto">{saver.busy ? 'Saving…' : saver.anyError ? <span className="text-red-700">Some changes are not saved</span> : 'All changes saved'}</span>
         </div>
         {generalIssues.length > 0 && <IssueList issues={generalIssues} />}
         <p className="mt-2 text-xs text-stone-500">Edits are saved as a draft automatically. Respondents only see them after you publish.</p>
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <ReorderHint />
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={buzzOnPickUp} onDragEnd={onDragEnd}>
         <SortableContext items={active.map((q) => q.id)} strategy={verticalListSortingStrategy}>
           <ol className="space-y-2">
             {active.map((q, i) => (
@@ -404,17 +405,20 @@ export default function FormBuilder() {
       )}
 
       {archived.length > 0 && (
-        <details className="card p-3">
-          <summary className="cursor-pointer font-medium">Archived questions ({archived.length})</summary>
+        <details className="card group p-3">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 font-medium [&::-webkit-details-marker]:hidden">
+            <Icon name="down" className="-rotate-90 text-stone-400 transition-transform group-open:rotate-0" />
+            Archived questions ({archived.length})
+          </summary>
           <p className="mt-1 text-sm text-stone-500">Hidden from new respondents. Old answers still show them. Their keys stay reserved.</p>
           <ul className="mt-2 divide-y divide-stone-100">
             {archived.map((q) => (
               <li key={q.id} className="flex items-center gap-2 py-2 text-sm">
-                <span className="flex-1">
-                  {q.label_en} <code className="text-xs text-stone-500">{q.key}</code> · {modesLabel(q)}
+                <span className="min-w-0 flex-1 break-words">
+                  {q.label_en} <code className="break-all text-xs text-stone-500">{q.key}</code> · {modesLabel(q)}
                 </span>
                 {q.key !== PATH_KEY && (
-                  <button className="btn-secondary px-3 py-1 text-sm" onClick={() => restoreQuestion(q)}>
+                  <button className="btn-secondary btn-sm" onClick={() => restoreQuestion(q)}>
                     Restore
                   </button>
                 )}
@@ -451,9 +455,9 @@ function IssueList({ issues }: { issues: Issue[] }) {
   return (
     <ul className="mt-2 space-y-1">
       {issues.map((i, n) => (
-        <li key={n} className={i.level === 'error' ? 'text-red-800' : 'text-amber-800'}>
-          {i.level === 'error' ? '⚠ ' : 'ℹ '}
-          {i.message}
+        <li key={n} className={`flex gap-2 ${i.level === 'error' ? 'text-red-800' : 'text-amber-800'}`}>
+          <Icon name={i.level === 'error' ? 'alert' : 'info'} size={16} className="mt-0.5" />
+          <span className="min-w-0">{i.message}</span>
         </li>
       ))}
     </ul>
@@ -479,42 +483,62 @@ function SortableQuestion({
   issues: Issue[];
   summary: string;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: q.id, disabled: q.key === PATH_KEY });
+  const locked = q.key === PATH_KEY;
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: q.id, disabled: locked });
   const style = { transform: transform ? `translate3d(0, ${transform.y}px, 0)` : undefined, transition };
   const errors = issues.filter((i) => i.level === 'error').length;
+  const name = q.label_en || 'untitled question';
   return (
-    <li ref={setNodeRef} style={style} className={`card ${isDragging ? 'z-10 shadow-lg' : ''} ${errors ? 'border-red-300' : ''}`}>
-      <div className="flex items-start gap-2 p-3">
+    // The whole row is the drag handle (press and hold); a quick tap opens the question.
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`card select-none transition-shadow [-webkit-touch-callout:none] ${locked ? '' : 'cursor-grab active:cursor-grabbing'} ${isDragging ? liftedClass : ''} ${errors ? 'border-red-300' : ''}`}
+      {...rowListeners(listeners)}
+    >
+      <div className="flex items-start gap-1 p-2 sm:gap-2 sm:p-3">
         <button
-          className="mt-0.5 cursor-grab touch-none px-1 text-stone-400 disabled:cursor-not-allowed disabled:opacity-30"
-          aria-label={`Drag to reorder “${q.label_en}”`}
-          disabled={q.key === PATH_KEY}
+          ref={setActivatorNodeRef}
+          type="button"
+          className="btn-ghost btn-icon btn-sm text-stone-400 disabled:opacity-30"
+          title={locked ? 'The first question always stays first' : 'Hold to drag'}
           {...attributes}
-          {...listeners}
+          aria-label={locked ? `“${name}” always stays first` : `Reorder “${name}”: hold to drag, or press Space and use the arrow keys`}
+          disabled={locked}
         >
-          ⠿
+          <Icon name={locked ? 'lock' : 'drag'} />
         </button>
-        <button className="min-w-0 flex-1 text-left" onClick={onOpen} aria-haspopup="dialog">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-stone-400">{index + 1}</span>
-            <span className="font-medium">{q.label_en || <em className="text-stone-400">untitled</em>}</span>
+        <button type="button" className="min-h-10 min-w-0 flex-1 rounded-lg py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200" onClick={onOpen} aria-haspopup="dialog">
+          <div className="flex items-baseline gap-2">
+            <span className="text-xs tabular-nums text-stone-400">{index + 1}</span>
+            <span className="min-w-0 break-words font-medium text-stone-900">{q.label_en || <em className="text-stone-400">untitled</em>}</span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
             <Badge>{modes}</Badge>
-            <code className="text-stone-500">{q.key}</code>
+            <code className="break-all text-stone-500">{q.key}</code>
             {q.required && <Badge>required</Badge>}
-            {q.show_if && <Badge tone="blue" title={summary}>conditional</Badge>}
-            {!q.first_published_at && <Badge tone="violet">not published yet</Badge>}
-            {errors > 0 && <Badge tone="red">{errors} problem(s)</Badge>}
+            {q.show_if && (
+              <Badge title={summary}>
+                <Icon name="filter" size={12} className="mr-1" />
+                conditional
+              </Badge>
+            )}
+            {!q.first_published_at && <Badge tone="amber">not published yet</Badge>}
+            {errors > 0 && (
+              <Badge tone="red">
+                <Icon name="alert" size={12} className="mr-1" />
+                {errors} problem(s)
+              </Badge>
+            )}
           </div>
           {q.show_if && <p className="mt-1 truncate text-xs text-stone-500">Shown if {summary}</p>}
         </button>
         <div className="flex flex-col">
-          <button className="px-1 text-xs text-stone-500 disabled:opacity-30" disabled={index === 0 || q.key === PATH_KEY} onClick={() => onMove(-1)} aria-label="Move up">
-            ▲
+          <button type="button" data-no-drag className="btn-ghost btn-icon btn-sm text-stone-500" disabled={index === 0 || locked} onClick={() => onMove(-1)} aria-label={`Move “${name}” up`}>
+            <Icon name="up" />
           </button>
-          <button className="px-1 text-xs text-stone-500 disabled:opacity-30" disabled={index === count - 1 || q.key === PATH_KEY} onClick={() => onMove(1)} aria-label="Move down">
-            ▼
+          <button type="button" data-no-drag className="btn-ghost btn-icon btn-sm text-stone-500" disabled={index === count - 1 || locked} onClick={() => onMove(1)} aria-label={`Move “${name}” down`}>
+            <Icon name="down" />
           </button>
         </div>
       </div>
@@ -525,11 +549,11 @@ function SortableQuestion({
 function AddQuestion({ onAdd, disabled }: { onAdd: (k: QuestionKind) => void; disabled: boolean }) {
   const [k, setK] = useState<QuestionKind>('standard');
   return (
-    <div className="card flex flex-wrap items-center gap-2 p-3">
-      <label className="text-sm font-medium" htmlFor="add-kind">
-        Add a question:
+    <div className="card flex flex-wrap items-center gap-2 p-3 sm:p-4">
+      <label className="w-full text-sm font-medium text-stone-700 sm:w-auto" htmlFor="add-kind">
+        Add a question
       </label>
-      <select id="add-kind" className="input w-auto" value={k} onChange={(e) => setK(e.target.value as QuestionKind)}>
+      <select id="add-kind" className="input min-w-0 flex-1 sm:w-auto sm:flex-none" value={k} onChange={(e) => setK(e.target.value as QuestionKind)}>
         {(Object.keys(KIND_LABEL) as QuestionKind[]).map((x) => (
           <option key={x} value={x}>
             {KIND_LABEL[x]}
@@ -537,9 +561,10 @@ function AddQuestion({ onAdd, disabled }: { onAdd: (k: QuestionKind) => void; di
         ))}
       </select>
       <button className="btn-primary" disabled={disabled} onClick={() => onAdd(k)}>
-        + Add
+        <Icon name="add" />
+        Add
       </button>
-      <span className="text-xs text-stone-500">New questions go just above the contact question. Choose, Type and Speak are set inside the question.</span>
+      <span className="w-full text-xs text-stone-500">New questions go just above the contact question. Choose, Type and Speak are set inside the question.</span>
     </div>
   );
 }
@@ -560,7 +585,8 @@ function KindChangeDialog({ q, to, taken, onClose, onConfirm }: { q: QuestionRow
           <li>create a new {KIND_LABEL[to]} question with the same text and a new key,</li>
           <li>point every “when to show” condition and your draft Ideal Profile conditions at the new question.</li>
         </ul>
-        <p className="rounded-lg bg-amber-50 p-2 text-amber-800">
+        <p className="flex gap-2 rounded-lg bg-amber-50 p-3 text-amber-800">
+          <Icon name="alert" className="mt-0.5" />
           Review those conditions afterwards — a comparison that made sense before may not now (they will be flagged). Then publish the form and the profiles draft.
         </p>
         <div>
@@ -571,7 +597,7 @@ function KindChangeDialog({ q, to, taken, onClose, onConfirm }: { q: QuestionRow
           {err && <p className="mt-1 text-xs text-red-700">{err}</p>}
         </div>
       </div>
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button className="btn-secondary" onClick={onClose}>
           Cancel
         </button>
@@ -624,15 +650,15 @@ function VersionsDialog({ onClose }: { onClose: () => void }) {
             <li key={v.id} className="flex flex-wrap items-center gap-2 py-2">
               <span className="font-medium">v{v.version}</span>
               {v.is_current && <Badge tone="green">live</Badge>}
-              <span className="text-stone-500">
+              <span className="min-w-0 break-words text-stone-500">
                 {format(new Date(v.published_at), 'd MMM yyyy, HH:mm')} · {admins.data?.find((a) => a.user_id === v.published_by)?.email ?? 'system'} · {v.config.questions.length} questions
               </span>
               <span className="ml-auto flex gap-2">
-                <button className="btn-ghost px-2 py-1" onClick={() => setView(view?.id === v.id ? null : v)}>
+                <button className="btn-ghost btn-sm" onClick={() => setView(view?.id === v.id ? null : v)}>
                   {view?.id === v.id ? 'Hide' : 'View'}
                 </button>
                 {!v.is_current && (
-                  <button className="btn-secondary px-2 py-1" onClick={() => restore(v)}>
+                  <button className="btn-secondary btn-sm" onClick={() => restore(v)}>
                     Restore
                   </button>
                 )}

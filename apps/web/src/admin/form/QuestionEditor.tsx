@@ -9,6 +9,7 @@ import { isSingleSelect, withDefaults } from '@shared/input-modes.ts';
 import { QuestionPreview } from '../../respondent/QuestionPreview.tsx';
 import type { OptionRow, QuestionRow } from '../types.ts';
 import { SaveIndicator, type SaveState } from '../ui.tsx';
+import { Icon } from '../../lib/icons.tsx';
 import { ShowIfEditor } from './ConditionEditor.tsx';
 import { parseNumberInput, type RefQuestion } from './conditionValue.ts';
 import { toDraft } from './draft.ts';
@@ -95,8 +96,8 @@ export function BoundedNumber({ id, label, value, onChange, min, max, allowEmpty
 
 function Toggle({ id, label, checked, onChange, disabled }: { id: string; label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <label htmlFor={id} className="flex items-center gap-2 text-sm">
-      <input id={id} type="checkbox" className="h-4 w-4 accent-brand-700" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+    <label htmlFor={id} className="flex min-h-10 cursor-pointer items-center gap-2 text-sm text-stone-700">
+      <input id={id} type="checkbox" className="h-4 w-4 shrink-0 accent-brand-700" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
   );
@@ -109,13 +110,13 @@ function ModePanel({ mode, modes, locked, onToggle, children }: { mode: InputMod
   const id = `mode-${mode}`;
   return (
     <section className={`rounded-xl border ${on ? 'border-brand-200 bg-white' : 'border-stone-200 bg-stone-50'}`}>
-      <div className="flex items-center gap-3 p-3">
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={`${id}-body`}>
-          <span className="text-stone-400">{open ? '▾' : '▸'}</span>
-          <span className="font-medium">{MODE_LABEL[mode]}</span>
-          {modes.primary === mode && on && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-800">primary</span>}
+      <div className="flex items-center gap-3 px-3 py-1">
+        <button type="button" className="flex min-h-10 min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={`${id}-body`}>
+          <Icon name="down" size={16} className={`text-stone-400 transition-transform ${open ? '' : '-rotate-90'}`} />
+          <span className="font-medium text-stone-900">{MODE_LABEL[mode]}</span>
+          {modes.primary === mode && on && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-800">primary</span>}
         </button>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex min-h-10 cursor-pointer items-center gap-2 text-sm">
           <span className="sr-only">{MODE_LABEL[mode]} on/off</span>
           <span className="text-stone-500">{on ? 'On' : 'Off'}</span>
           <input
@@ -171,6 +172,7 @@ export function QuestionEditor(p: QuestionEditorProps) {
 
   const preview = useMemo(() => compileQuestion(toDraft({ ...q, input_modes: modes })), [q, modes]);
   const choosing = q.kind === 'standard' && !!modes?.choose.enabled;
+  const [showPreview, setShowPreview] = useState(false);
 
   function commitKey() {
     const k = keyText.trim();
@@ -182,37 +184,40 @@ export function QuestionEditor(p: QuestionEditorProps) {
   }
 
   return (
-    <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid gap-4 p-3 pb-24 sm:p-4 md:pb-6 lg:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-4">
         {p.issues.length > 0 && (
           <ul className="space-y-1 rounded-xl bg-red-50 p-3 text-sm" aria-label="Problems with this question">
             {p.issues.map((i, n) => (
-              <li key={n} className={i.level === 'error' ? 'text-red-800' : 'text-amber-800'}>
-                {i.level === 'error' ? '⚠ ' : 'ℹ '}
-                {i.message}
+              <li key={n} className={`flex gap-2 ${i.level === 'error' ? 'text-red-800' : 'text-amber-800'}`}>
+                <Icon name={i.level === 'error' ? 'alert' : 'info'} size={16} className="mt-0.5" />
+                <span className="min-w-0">{i.message}</span>
               </li>
             ))}
           </ul>
         )}
         {!check.ok && (
-          <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-            Unsaved — fix the highlighted fields.
-            {check.errors[''] && <span className="block">{check.errors['']}</span>}
-            {check.errors['primary'] && <span className="block">{check.errors['primary']}</span>}
+          <div role="alert" className="flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <Icon name="alert" size={16} className="mt-0.5" />
+            <div className="min-w-0">
+              Unsaved — fix the highlighted fields.
+              {check.errors[''] && <span className="block">{check.errors['']}</span>}
+              {check.errors['primary'] && <span className="block">{check.errors['primary']}</span>}
+            </div>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <SaveIndicator state={p.status.state} error={p.status.error} onRetry={p.onRetry} />
           {p.status.state === 'error' && (
-            <button className="text-xs text-stone-600 underline" onClick={p.onUndo}>
-              undo my change
+            <button type="button" className="btn-ghost btn-sm" onClick={p.onUndo}>
+              Undo my change
             </button>
           )}
           <span className="text-stone-500">{published ? 'Published — can be archived, not deleted' : 'Never published — can be deleted'}</span>
         </div>
 
-        <section className="card space-y-3 p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
+        <section className="card space-y-3 p-3 sm:p-4">
+          <div className="grid gap-3 md:grid-cols-2">
             <TextField id={id('label_en')} label="Question (English)" value={q.label_en} max={300} onChange={(x) => p.onPatch({ label_en: x })} multiline />
             <TextField id={id('label_hi')} label="Question (Hindi)" value={q.label_hi} max={300} onChange={(x) => p.onPatch({ label_hi: x || null })} multiline />
             <TextField id={id('help_en')} label="Help text (English)" value={q.help_en} max={500} onChange={(x) => p.onPatch({ help_en: x || null })} />
@@ -254,7 +259,7 @@ export function QuestionEditor(p: QuestionEditorProps) {
           )}
           {q.kind === 'yes_no' && <p className="text-sm text-stone-500">Answers are fixed: Yes / No.</p>}
           {q.kind === 'date' && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <label className="label" htmlFor={id('dmin')}>
                   Earliest date
@@ -274,12 +279,12 @@ export function QuestionEditor(p: QuestionEditorProps) {
         {q.kind === 'standard' && modes && (
           <section className="space-y-3" aria-label="Ways to answer">
             <div className="flex flex-wrap items-end gap-3">
-              <h3 className="mr-auto font-semibold">Ways to answer</h3>
-              <div>
+              <h3 className="mr-auto font-semibold text-stone-900">Ways to answer</h3>
+              <div className="w-full sm:w-auto">
                 <label className="label" htmlFor={id('primary')}>
                   Primary
                 </label>
-                <select id={id('primary')} className="input w-auto py-1.5" value={modes.primary} disabled={isPath} onChange={(e) => updateModes(setPrimary(modes, e.target.value as InputMode))}>
+                <select id={id('primary')} className="input sm:w-auto" value={modes.primary} disabled={isPath} onChange={(e) => updateModes(setPrimary(modes, e.target.value as InputMode))}>
                   {(['choose', 'type', 'speak'] as const)
                     .filter((m) => modes[m].enabled)
                     .map((m) => (
@@ -296,9 +301,9 @@ export function QuestionEditor(p: QuestionEditorProps) {
             <ModePanel mode="choose" modes={modes} locked={isPath} onToggle={(on) => updateModes(setModeEnabled(modes, 'choose', on))}>
               <div>
                 <span className="label">Style</span>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-x-3 md:grid-cols-2">
                   {CHOOSE_STYLES.map((st) => (
-                    <label key={st} className="flex items-center gap-2 text-sm">
+                    <label key={st} className="flex min-h-10 cursor-pointer items-center gap-2 text-sm text-stone-700">
                       <input type="radio" name={id('style')} value={st} checked={modes.choose.style === st} disabled={isPath && st !== 'radio' && st !== 'dropdown'} onChange={() => updateModes(patchMode(modes, 'choose', { style: st as ChooseStyle }))} />
                       {STYLE_LABEL[st]}
                     </label>
@@ -306,21 +311,21 @@ export function QuestionEditor(p: QuestionEditorProps) {
                 </div>
               </div>
               {!isSingleSelect(modes.choose) && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 md:grid-cols-2">
                   <BoundedNumber id={id('minp')} label="Pick at least" value={modes.choose.min_picks} {...BOUNDS.picks} error={err('choose.min_picks')} onChange={(n) => updateModes(patchMode(modes, 'choose', { min_picks: n }))} />
                   <BoundedNumber id={id('maxp')} label="Pick at most" value={modes.choose.max_picks} min={1} max={BOUNDS.picks.max} error={err('choose.max_picks')} onChange={(n) => updateModes(patchMode(modes, 'choose', { max_picks: n }))} />
                 </div>
               )}
               <Toggle id={id('other')} label="Allow “Other” (typed)" checked={modes.choose.allow_other} disabled={isPath} onChange={(x) => updateModes(patchMode(modes, 'choose', { allow_other: x }))} />
               {modes.choose.allow_other && (
-                <div className="w-48">
+                <div className="md:w-48">
                   <BoundedNumber id={id('othermax')} label="“Other” max characters" value={modes.choose.other_max_chars} {...BOUNDS.otherChars} allowEmpty={false} error={err('choose.other_max_chars')} onChange={(n) => updateModes(patchMode(modes, 'choose', { other_max_chars: n ?? 200 }))} />
                 </div>
               )}
             </ModePanel>
 
             <ModePanel mode="type" modes={modes} locked={isPath} onToggle={(on) => updateModes(setModeEnabled(modes, 'type', on))}>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="label" htmlFor={id('format')}>
                     Format
@@ -333,7 +338,7 @@ export function QuestionEditor(p: QuestionEditorProps) {
                     ))}
                   </select>
                 </div>
-                <div className="flex items-end pb-2">
+                <div className="flex items-end">
                   <Toggle id={id('multi')} label="Several lines (long answer)" checked={modes.type.multiline} onChange={(x) => updateModes(patchMode(modes, 'type', { multiline: x }))} />
                 </div>
                 <BoundedNumber id={id('minc')} label="Minimum characters" value={modes.type.min_chars} {...BOUNDS.chars} error={err('type.min_chars')} onChange={(n) => updateModes(patchMode(modes, 'type', { min_chars: n }))} />
@@ -342,7 +347,7 @@ export function QuestionEditor(p: QuestionEditorProps) {
                 <TextField id={id('ph_hi')} label="Placeholder (Hindi)" value={modes.type.placeholder_hi} max={120} onChange={(x) => updateModes(patchMode(modes, 'type', { placeholder_hi: x || null }))} />
               </div>
               {(modes.type.format === 'number' || modes.type.format === 'currency') && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 md:grid-cols-2">
                   <BoundedNumber id={id('vmin')} label="Smallest allowed value" value={typeof v.min === 'number' ? v.min : null} min={-1e12} max={1e12} onChange={(n) => setV('min', n)} />
                   <BoundedNumber id={id('vmax')} label="Largest allowed value" value={typeof v.max === 'number' ? v.max : null} min={-1e12} max={1e12} onChange={(n) => setV('max', n)} />
                 </div>
@@ -350,7 +355,7 @@ export function QuestionEditor(p: QuestionEditorProps) {
             </ModePanel>
 
             <ModePanel mode="speak" modes={modes} locked={isPath} onToggle={(on) => updateModes(setModeEnabled(modes, 'speak', on))}>
-              <div className="w-56">
+              <div className="md:w-56">
                 <BoundedNumber id={id('secs')} label="Longest recording (seconds)" value={modes.speak.max_seconds} {...BOUNDS.seconds} allowEmpty={false} error={err('speak.max_seconds')} onChange={(n) => updateModes(patchMode(modes, 'speak', { max_seconds: n ?? 120 }))} />
               </div>
               <Toggle id={id('live')} label="Show words live while they speak (where the browser supports it)" checked={modes.speak.live_transcript} onChange={(x) => updateModes(patchMode(modes, 'speak', { live_transcript: x }))} />
@@ -376,7 +381,7 @@ export function QuestionEditor(p: QuestionEditorProps) {
         )}
 
         {!isPath && q.kind !== 'contact' && (
-          <section className="card p-4">
+          <section className="card p-3 sm:p-4">
             <h4 className="label">When to show this question</h4>
             <ShowIfEditor value={q.show_if as ShowIf | null} refs={p.earlier} onChange={(s) => p.onPatch({ show_if: s })} />
           </section>
@@ -384,26 +389,32 @@ export function QuestionEditor(p: QuestionEditorProps) {
 
         {!isPath && (
           <div className="border-t border-stone-200 pt-3">
-            <button className="btn-ghost px-3 py-1.5 text-sm text-red-700" onClick={p.onRemove}>
+            <button type="button" className="btn-ghost text-red-700 hover:bg-red-50" onClick={p.onRemove}>
+              <Icon name="delete" />
               {published ? 'Archive this question' : 'Delete this question'}
             </button>
           </div>
         )}
       </div>
 
-      <aside className="lg:sticky lg:top-4 lg:self-start" aria-label="Phone preview">
-        <div className="mb-2 flex items-center justify-between">
+      {/* On phones and tablets the preview sits below the form, behind a toggle. */}
+      <button type="button" className="btn-secondary w-full lg:hidden" aria-expanded={showPreview} aria-controls={id('preview')} onClick={() => setShowPreview((x) => !x)}>
+        <Icon name="phone" />
+        {showPreview ? 'Hide phone preview' : 'Show phone preview'}
+      </button>
+      <aside id={id('preview')} className={`${showPreview ? '' : 'hidden'} min-w-0 lg:sticky lg:top-4 lg:block lg:self-start`} aria-label="Phone preview">
+        <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-sm font-medium text-stone-600">Live preview</span>
-          <div className="flex rounded-full border border-stone-300 p-0.5 text-xs" role="group" aria-label="Preview language">
+          <div className="flex rounded-full border border-stone-300 bg-white p-0.5 text-xs" role="group" aria-label="Preview language">
             {(['en', 'hi'] as const).map((l) => (
-              <button key={l} className={`rounded-full px-3 py-1 ${lang === l ? 'bg-stone-900 text-white' : ''}`} aria-pressed={lang === l} onClick={() => setLang(l)}>
+              <button key={l} type="button" className={`h-9 rounded-full px-3 font-medium ${lang === l ? 'bg-brand-700 text-white' : 'text-stone-600 hover:bg-stone-100'}`} aria-pressed={lang === l} onClick={() => setLang(l)}>
                 {l === 'en' ? 'English' : 'हिंदी'}
               </button>
             ))}
           </div>
         </div>
-        <div className="mx-auto w-[360px] max-w-full overflow-hidden rounded-[2rem] border-8 border-stone-800 bg-[#FAF8F4] shadow-xl">
-          <div className="h-[640px] overflow-y-auto">
+        <div className="mx-auto w-[360px] max-w-full overflow-hidden rounded-[2rem] border-8 border-stone-800 bg-bg shadow-xl">
+          <div className="h-[560px] overflow-y-auto lg:h-[640px]">
             <QuestionPreview question={preview} lang={lang} brandName={p.brandName} />
           </div>
         </div>

@@ -2,14 +2,10 @@
 import { Link } from 'react-router-dom';
 import type { PublicProperty } from './api.ts';
 import { type Lang, pick, t } from './i18n.ts';
+import { Icon } from '../lib/icons.tsx';
 
 export function LockIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <rect x="3" y="7" width="10" height="7" rx="1.5" />
-      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-    </svg>
-  );
+  return <Icon name="lock" size={14} />;
 }
 
 /** Footer on every step: small, muted, never shouty. */
@@ -83,11 +79,14 @@ export function DoneScreen({ property, lang, name, waitlist, onAgain }: { proper
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-4 py-8">
       <div className="r-card space-y-4 p-8 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft text-2xl text-success" aria-hidden="true">✓</div>
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft text-success" aria-hidden="true">
+          <Icon name="tick" size={28} />
+        </div>
         <h1 className="text-2xl font-semibold text-ink">{t(lang, 'thanksTitle', { name: first }).replace(', !', '!')}</h1>
         <p className="text-lg text-ink">{waitlist ? t(lang, 'waitlistDone') : phone ? t(lang, 'doneCall', { brand: property.brand_name, phone }) : t(lang, 'doneCallNoPhone', { brand: property.brand_name })}</p>
         {property.contact_whatsapp && (
           <a className="r-btn-secondary w-full" href={waLink(property.contact_whatsapp, `Hi ${property.brand_name}, I filled the form for ${property.name}.`)} target="_blank" rel="noopener noreferrer">
+            <Icon name="whatsapp" size={22} />
             {t(lang, 'whatsappUs')}
           </a>
         )}

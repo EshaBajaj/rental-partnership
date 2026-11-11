@@ -302,6 +302,23 @@ Deno.test('worker: one failing step does not stop the others', async () => {
   assertMatch(b.errors[0], /db down/);
 });
 
+Deno.test('worker: no Telegram configured leaves notifications pending, not failed', async () => {
+  let claimed = false;
+  const { deps, calls } = fakeDeps({
+    rpc: {
+      voice_claim_transcribe: () => [],
+      voice_claim_translate: () => [],
+      notification_claim: () => { claimed = true; return []; },
+      audio_expired: () => [],
+    },
+    messengerEnabled: false,
+  });
+  const b = await (await worker(deps)(post('transcribe-worker', {}, AUTH))).json();
+  assertEquals(b.notify_failed, 0);
+  assertEquals(claimed, false);
+  assertEquals(calls.sent.length, 0);
+});
+
 // ---------------------------------------------------------------- notify
 Deno.test('notify: internal only for pending; admin JWT for test message', async () => {
   const { deps, calls } = fakeDeps({ rpc: { notification_claim: () => [] } });

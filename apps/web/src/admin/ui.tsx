@@ -1,6 +1,7 @@
 // Small UI kit for the admin: toasts, dialogs, badges, save indicator, error boundary.
 import { Component, createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { Tier } from '@shared/types.ts';
+import { Icon } from '../lib/icons.tsx';
 
 // ---------------------------------------------------------------- toasts
 interface Toast {
@@ -21,7 +22,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4" aria-live="polite">
+      <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 md:bottom-4 flex flex-col items-center gap-2 px-4" aria-live="polite">
         {items.map((t) => (
           <div
             key={t.id}
@@ -49,11 +50,11 @@ export function Sheet({ title, onClose, children, actions }: { title: string; on
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-30 flex justify-end bg-black/30" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <section ref={ref} tabIndex={-1} aria-label={title} className="flex h-full w-full flex-col bg-stone-50 shadow-2xl outline-none lg:max-w-6xl">
         <header className="flex items-center gap-3 border-b border-stone-200 bg-white px-4 py-3">
-          <button className="btn-ghost -ml-2 px-2 py-1" onClick={onClose} aria-label="Close editor">
-            ←
+          <button className="btn-ghost btn-icon -ml-2" onClick={onClose} aria-label="Close editor">
+            <Icon name="back" size={20} />
           </button>
           <h2 className="min-w-0 flex-1 truncate font-semibold">{title}</h2>
           {actions}
@@ -88,8 +89,8 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
       >
         <div className="mb-3 flex items-start justify-between gap-4">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <button className="btn-ghost -m-2 px-2 py-1" onClick={onClose} aria-label="Close">
-            ✕
+          <button className="btn-ghost btn-icon -m-2" onClick={onClose} aria-label="Close">
+            <Icon name="close" size={20} />
           </button>
         </div>
         {children}
@@ -120,7 +121,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {state && (
         <Modal title={state.title} onClose={() => close(false)}>
           <div className="space-y-3 text-sm text-stone-700">{state.body}</div>
-          <div className="mt-5 flex justify-end gap-2">
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button className="btn-secondary" onClick={() => close(false)}>
               Cancel
             </button>
@@ -175,7 +176,7 @@ export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => v
   const msg = error instanceof Error ? error.message : String(error);
   return (
     <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
-      <p className="whitespace-pre-line">{msg}</p>
+      <p className="flex gap-2 whitespace-pre-line"><Icon name="alert" className="mt-0.5" />{msg}</p>
       {onRetry && (
         <button className="btn-secondary mt-3" onClick={onRetry}>
           Try again
@@ -192,7 +193,7 @@ export function Empty({ children }: { children: ReactNode }) {
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 export function SaveIndicator({ state, onRetry, error }: { state: SaveState; onRetry?: () => void; error?: string | null }) {
   if (state === 'saving') return <span className="text-xs text-stone-500">Saving…</span>;
-  if (state === 'saved') return <span className="text-xs text-emerald-700">Saved ✓</span>;
+  if (state === 'saved') return <span className="inline-flex items-center gap-1 text-xs text-emerald-700"><Icon name="tick" size={14} />Saved</span>;
   if (state === 'error')
     return (
       <span className="text-xs text-red-700" title={error ?? undefined}>
@@ -246,4 +247,18 @@ export function download(filename: string, content: BlobPart, type: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Consistent page heading: small eyebrow (section), title, one-line description, actions on the right (wrap on phones). */
+export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-end gap-3">
+      <div className="min-w-0 flex-1">
+        {eyebrow && <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">{eyebrow}</p>}
+        <h1 className="page-title">{title}</h1>
+        {description && <p className="mt-0.5 text-sm text-stone-500">{description}</p>}
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
 }

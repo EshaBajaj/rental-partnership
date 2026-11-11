@@ -54,19 +54,21 @@ export default function Funnel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-2">
-        <h1 className="mr-auto text-xl font-semibold">Funnel</h1>
-        <div>
-          <label className="label" htmlFor="fu-from">
-            From
-          </label>
-          <input id="fu-from" type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </div>
-        <div>
-          <label className="label" htmlFor="fu-to">
-            To
-          </label>
-          <input id="fu-to" type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+        <h1 className="page-title mr-auto">Funnel</h1>
+        <div className="flex w-full gap-2 sm:w-auto">
+          <div className="min-w-0 flex-1">
+            <label className="label" htmlFor="fu-from">
+              From
+            </label>
+            <input id="fu-from" type="date" className="input h-10 py-0 text-sm" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <label className="label" htmlFor="fu-to">
+              To
+            </label>
+            <input id="fu-to" type="date" className="input h-10 py-0 text-sm" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
         </div>
       </div>
       {q.isLoading ? (
@@ -77,22 +79,22 @@ export default function Funnel() {
         <Empty>No visits in this period.</Empty>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Stat label="Opened the form" value={String(views)} />
             <Stat label="Completion rate" value={`${Math.round((submits / views) * 1000) / 10}%`} />
             <Stat label="Median time to finish" value={formatDuration(median(q.data!.durations))} />
           </div>
-          <div className="card space-y-2 p-4">
+          <div className="card space-y-3 p-4">
             {steps.map((s) => (
               <div key={s.id}>
                 <div className="flex justify-between gap-2 text-sm">
-                  <span className="truncate">{s.label}</span>
-                  <span className="shrink-0 text-stone-600">
+                  <span className="min-w-0 truncate text-stone-800">{s.label}</span>
+                  <span className="shrink-0 tabular-nums text-stone-600">
                     {s.sessions} · {s.ofStart}%{s.dropOff > 0 ? <span className="text-red-700"> (−{s.dropOff}%)</span> : null}
                   </span>
                 </div>
-                <div className="h-3 overflow-hidden rounded-full bg-stone-100">
-                  <div className="h-full bg-brand-600" style={{ width: `${s.ofStart}%` }} />
+                <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-stone-100">
+                  <div className="h-full rounded-full bg-brand-600 transition-[width] duration-500" style={{ width: `${s.ofStart}%` }} />
                 </div>
               </div>
             ))}
@@ -109,9 +111,9 @@ export default function Funnel() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="card p-4">
+    <div className="card p-4 last:col-span-2 sm:last:col-span-1">
       <p className="text-sm text-stone-500">{label}</p>
-      <p className="text-2xl font-semibold">{value}</p>
+      <p className="mt-0.5 text-2xl font-semibold tabular-nums text-stone-900">{value}</p>
     </div>
   );
 }

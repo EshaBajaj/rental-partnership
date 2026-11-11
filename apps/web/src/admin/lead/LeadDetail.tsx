@@ -13,6 +13,7 @@ import { Badge, ErrorBox, SaveIndicator, type SaveState, Spinner, TierBadge, use
 import { PinButton, StatusControl, useUpdateLead } from '../board/leadMutations.tsx';
 import { PATH_LABEL } from '../board/LeadCard.tsx';
 import { eventText } from './events.ts';
+import { Icon } from '../../lib/icons.tsx';
 
 export function LeadDetail() {
   const { id = '' } = useParams();
@@ -32,44 +33,74 @@ export function LeadDetail() {
   if (!lead.data) return <ErrorBox error="This lead does not exist." />;
   const l = lead.data;
 
+  const waHref = `https://wa.me/${whatsappDigits(l.phone_e164)}`;
+
   return (
-    <div className="space-y-4">
-      <Link to="/admin" className="text-sm text-stone-500 hover:underline">
-        ← All leads
+    <div className="space-y-4 pb-20 md:pb-0">
+      <Link to="/admin" className="-ml-2 inline-flex h-10 items-center gap-1 rounded-xl px-2 text-sm font-medium text-stone-600 hover:bg-stone-100 hover:text-stone-900">
+        <Icon name="back" size={16} />
+        All leads
       </Link>
       <header className="card p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <TierBadge tier={l.tier} />
-          <h1 className="text-xl font-semibold">{l.name}</h1>
-          <Badge>{PATH_LABEL[l.path]}</Badge>
-          {l.duplicate_of && (
-            <Link to={`/admin/leads/${l.duplicate_of}`}>
-              <Badge tone="violet">duplicate of earlier lead ↗</Badge>
-            </Link>
-          )}
-          {l.suspected_bot && <Badge tone="red">suspected bot ({l.duration_seconds}s)</Badge>}
-          <div className="ml-auto">
-            <PinButton lead={l} />
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <h1 className="page-title break-words">{l.name}</h1>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <TierBadge tier={l.tier} />
+              <Badge>{PATH_LABEL[l.path]}</Badge>
+              {l.duplicate_of && (
+                <Link to={`/admin/leads/${l.duplicate_of}`}>
+                  <Badge tone="violet">
+                    <span className="inline-flex items-center gap-0.5">
+                      duplicate of earlier lead <Icon name="external" size={12} />
+                    </span>
+                  </Badge>
+                </Link>
+              )}
+              {l.suspected_bot && <Badge tone="red">suspected bot ({l.duration_seconds}s)</Badge>}
+              {!l.whatsapp_ok && <Badge>No WhatsApp</Badge>}
+            </div>
           </div>
+          <PinButton lead={l} />
         </div>
-        <p className="mt-1 text-sm text-stone-500">
+        <p className="mt-2 text-sm text-stone-500">
           {format(new Date(l.created_at), 'd MMM yyyy, HH:mm')} ({formatDistanceToNowStrict(new Date(l.created_at), { addSuffix: true })}) · took{' '}
           {Math.round(l.duration_seconds / 6) / 10} min · {l.lang === 'hi' ? 'Hindi' : 'English'} · source {l.source}
           {config.data ? ` · form v${config.data.version}` : ''}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 hidden flex-wrap gap-2 md:flex">
           <a className="btn-primary" href={`tel:${l.phone_e164}`}>
-            📞 Call {formatPhone(l.phone_e164)}
+            <Icon name="call" />
+            Call <span className="tabular-nums">{formatPhone(l.phone_e164)}</span>
           </a>
-          {l.whatsapp_ok ? (
-            <a className="btn-secondary" href={`https://wa.me/${whatsappDigits(l.phone_e164)}`} target="_blank" rel="noreferrer">
+          {l.whatsapp_ok && (
+            <a className="btn-secondary" href={waHref} target="_blank" rel="noreferrer">
+              <Icon name="whatsapp" className="text-emerald-700" />
               WhatsApp
             </a>
-          ) : (
-            <Badge>No WhatsApp</Badge>
           )}
         </div>
+        <a className="mt-2 inline-flex h-10 items-center gap-2 text-sm font-medium tabular-nums text-stone-700 md:hidden" href={`tel:${l.phone_e164}`}>
+          <Icon name="call" size={16} className="text-stone-400" />
+          {formatPhone(l.phone_e164)}
+        </a>
       </header>
+
+      {/* phones: Call / WhatsApp always in reach, above the app's bottom tab bar */}
+      <div className="fixed inset-x-0 bottom-16 z-20 border-t border-stone-200 bg-white/95 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur md:hidden">
+        <div className="flex gap-2">
+          <a className="btn-primary flex-1" href={`tel:${l.phone_e164}`}>
+            <Icon name="call" />
+            Call
+          </a>
+          {l.whatsapp_ok && (
+            <a className="btn-secondary flex-1" href={waHref} target="_blank" rel="noreferrer">
+              <Icon name="whatsapp" className="text-emerald-700" />
+              WhatsApp
+            </a>
+          )}
+        </div>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="space-y-4 lg:col-span-3">
@@ -119,7 +150,8 @@ function Ranking({ lead }: { lead: ResponseRow }) {
     <section className="card p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-auto font-semibold">Why this ranking</h2>
-        <button className="btn-secondary px-3 py-1 text-sm" disabled={rematch.isPending} onClick={() => rematch.mutate()}>
+        <button className="btn-secondary btn-sm" disabled={rematch.isPending} onClick={() => rematch.mutate()}>
+          <Icon name="refresh" size={16} className={rematch.isPending ? 'animate-spin' : ''} />
           {rematch.isPending ? 'Re-matching…' : 'Re-match now'}
         </button>
       </div>
@@ -128,12 +160,17 @@ function Ranking({ lead }: { lead: ResponseRow }) {
         {lead.match_detail?.profile_set_version ? ` · Profiles v${lead.match_detail.profile_set_version}` : ''}
       </p>
       {lead.never_hit.length > 0 && (
-        <div className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">
-          <p className="font-medium">Never rule hit → “Not a fit”</p>
-          <ul>
+        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <p className="inline-flex flex-wrap items-center gap-1 font-medium">
+            Never rule hit <Icon name="forward" size={14} /> “Not a fit”
+          </p>
+          <ul className="mt-1 space-y-1">
             {lead.never_hit.map((n) => (
-              <li key={n.label}>
-                ⛔ {n.label}: {n.text}
+              <li key={n.label} className="flex gap-1.5">
+                <Icon name="blocked" size={16} className="mt-0.5" />
+                <span className="min-w-0">
+                  <span className="font-medium">{n.label}:</span> {n.text}
+                </span>
               </li>
             ))}
           </ul>
@@ -148,8 +185,11 @@ function Ranking({ lead }: { lead: ResponseRow }) {
       <h3 className="mt-4 text-sm font-semibold">Intent {lead.intent_score}/100</h3>
       <ul className="mt-1 grid gap-1 text-sm sm:grid-cols-2">
         {Object.entries(INTENT_LABEL).map(([k, label]) => (
-          <li key={k} className={ib[k] ? 'text-emerald-800' : 'text-stone-400'}>
-            {ib[k] ? '✓' : '–'} {label} {ib[k] ? `+${ib[k]}` : ''}
+          <li key={k} className={`flex gap-1.5 ${ib[k] ? 'text-emerald-800' : 'text-stone-400'}`}>
+            <Icon name={ib[k] ? 'tick' : 'minus'} size={16} className="mt-0.5" />
+            <span className="min-w-0">
+              {label} {ib[k] ? <span className="font-medium tabular-nums">+{ib[k]}</span> : null}
+            </span>
           </li>
         ))}
       </ul>
@@ -159,28 +199,37 @@ function Ranking({ lead }: { lead: ResponseRow }) {
 
 function ProfileMatchBlock({ m, best }: { m: ProfileMatchJson; best: boolean }) {
   return (
-    <details open={best} className="rounded-xl border border-stone-200 p-3">
-      <summary className="cursor-pointer text-sm">
-        <span className="font-medium">{m.name}</span> — {m.match}%{' '}
+    <details open={best} className="group rounded-xl border border-stone-200 p-3">
+      <summary className="flex min-h-8 cursor-pointer list-none flex-wrap items-center gap-1.5 text-sm [&::-webkit-details-marker]:hidden">
+        <Icon name="down" size={16} className="-rotate-90 text-stone-400 transition-transform group-open:rotate-0" />
+        <span className="font-medium">{m.name}</span>
+        <span className="tabular-nums text-stone-600">{m.match}%</span>
         {m.qualified ? <Badge tone="green">qualifies</Badge> : <Badge tone="amber">must-have not met</Badge>} {best && <Badge tone="blue">best</Badge>}
       </summary>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-100">
         <div className={`h-full ${m.qualified ? 'bg-emerald-500' : 'bg-amber-400'}`} style={{ width: `${Math.min(100, m.match)}%` }} />
       </div>
-      <ul className="mt-2 space-y-0.5 text-sm">
+      <ul className="mt-2 space-y-1 text-sm">
         {m.failed_must.map((r, i) => (
-          <li key={`f${i}`} className="text-red-700">
-            ✗ must: {r.text}
+          <li key={`f${i}`} className="flex gap-1.5 text-red-700">
+            <Icon name="close" size={16} className="mt-0.5" />
+            <span className="min-w-0">must: {r.text}</span>
           </li>
         ))}
         {m.matched.map((r, i) => (
-          <li key={`m${i}`} className="text-emerald-800">
-            ✓ {r.importance}: {r.text}
+          <li key={`m${i}`} className="flex gap-1.5 text-emerald-800">
+            <Icon name="tick" size={16} className="mt-0.5" />
+            <span className="min-w-0">
+              {r.importance}: {r.text}
+            </span>
           </li>
         ))}
         {m.missed.map((r, i) => (
-          <li key={`x${i}`} className="text-stone-500">
-            – {r.importance}: {r.text}
+          <li key={`x${i}`} className="flex gap-1.5 text-stone-500">
+            <Icon name="minus" size={16} className="mt-0.5" />
+            <span className="min-w-0">
+              {r.importance}: {r.text}
+            </span>
           </li>
         ))}
         {m.matched.length + m.missed.length + m.failed_must.length === 0 && (
@@ -204,7 +253,7 @@ function Answers({ lead, config }: { lead: ResponseRow; config: FormConfig | nul
           return (
             <div key={k} className="py-2">
               <dt className="text-xs text-stone-500">{a.question_label}</dt>
-              <dd className="whitespace-pre-line text-sm">
+              <dd className="whitespace-pre-line break-words text-sm text-stone-900">
                 {isContact ? (
                   <>
                     {(a.value as ContactValue).name} · {formatPhone((a.value as ContactValue).phone)} · WhatsApp {(a.value as ContactValue).whatsapp_ok ? 'OK' : 'no'}
@@ -212,7 +261,16 @@ function Answers({ lead, config }: { lead: ResponseRow; config: FormConfig | nul
                 ) : (
                   a.display
                 )}
-                {a.voice_note_id && <Badge tone="blue">🎤 voice</Badge>}
+                {a.voice_note_id && (
+                  <>
+                    {' '}
+                    <Badge tone="blue">
+                      <span className="inline-flex items-center gap-1">
+                        <Icon name="mic" size={12} /> voice
+                      </span>
+                    </Badge>
+                  </>
+                )}
               </dd>
             </div>
           );
@@ -281,14 +339,18 @@ function VoiceNote({ note, label }: { note: VoiceNoteRow; label: string }) {
           <track kind="captions" />
         </audio>
       ) : (
-        <button className="btn-secondary mt-2 px-3 py-1 text-sm" onClick={load}>
-          ▶ Load audio
+        <button className="btn-secondary btn-sm mt-2" onClick={load}>
+          <Icon name="play" size={16} />
+          Load audio
         </button>
       )}
-      {err && <p className="text-red-700">{err}</p>}
-      <button className="mt-2 text-xs text-stone-600 underline" aria-expanded={compare} onClick={() => setCompare((c) => !c)}>
-        {compare ? 'Hide comparison' : 'Compare live / Whisper / sent'}
-      </button>
+      {err && <p className="mt-1 text-red-700">{err}</p>}
+      <div>
+        <button className="btn-ghost btn-sm -ml-3 mt-1 text-stone-600" aria-expanded={compare} onClick={() => setCompare((c) => !c)}>
+          <Icon name="down" size={16} className={`transition-transform ${compare ? 'rotate-180' : ''}`} />
+          {compare ? 'Hide comparison' : 'Compare live / Whisper / sent'}
+        </button>
+      </div>
       {compare && (
         <div className="mt-2 grid gap-2 md:grid-cols-3">
           {versions.map((v) => (
@@ -383,16 +445,22 @@ function Manage({ lead }: { lead: ResponseRow }) {
         <StatusControl lead={lead} />
         {lead.pipeline_status === 'lost' && lead.lost_reason && <p className="mt-1 text-sm text-stone-600">Reason: {lead.lost_reason}</p>}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button className="btn-secondary px-3 py-1.5 text-sm" onClick={() => log.mutate('called')} disabled={log.isPending}>
-          Log call
-        </button>
-        <button className="btn-secondary px-3 py-1.5 text-sm" onClick={() => log.mutate('whatsapp_sent')} disabled={log.isPending}>
-          Log WhatsApp
-        </button>
-        <button className="btn-secondary px-3 py-1.5 text-sm" onClick={() => log.mutate('visit')} disabled={log.isPending}>
-          Log visit
-        </button>
+      <div>
+        <span className="label">Log an action</span>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary btn-sm" onClick={() => log.mutate('called')} disabled={log.isPending}>
+            <Icon name="call" size={16} />
+            Call
+          </button>
+          <button className="btn-secondary btn-sm" onClick={() => log.mutate('whatsapp_sent')} disabled={log.isPending}>
+            <Icon name="whatsapp" size={16} />
+            WhatsApp
+          </button>
+          <button className="btn-secondary btn-sm" onClick={() => log.mutate('visit')} disabled={log.isPending}>
+            <Icon name="store" size={16} />
+            Visit
+          </button>
+        </div>
       </div>
       <div>
         <label className="label" htmlFor="notes">
@@ -408,8 +476,9 @@ function Manage({ lead }: { lead: ResponseRow }) {
             setState('idle');
           }}
         />
-        <div className="mt-2 flex items-center gap-3">
-          <button className="btn-primary px-3 py-1.5 text-sm" disabled={!dirty || update.isPending} onClick={saveNotes}>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button className="btn-primary" disabled={!dirty || update.isPending} onClick={saveNotes}>
+            <Icon name="tick" size={16} />
             Save notes
           </button>
           {dirty && state !== 'saving' && state !== 'error' && <span className="text-xs text-amber-700">Unsaved changes (kept on this device)</span>}
@@ -436,10 +505,11 @@ function Timeline({ lead }: { lead: ResponseRow }) {
       {events.isLoading ? (
         <Spinner />
       ) : (
-        <ol className="mt-2 space-y-2 border-l border-stone-200 pl-4 text-sm">
+        <ol className="ml-1 mt-3 space-y-3 border-l border-stone-200 pl-4 text-sm">
           {(events.data ?? []).map((e) => (
-            <li key={e.id}>
-              <p>{eventText(e)}</p>
+            <li key={e.id} className="relative">
+              <span className="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-600 ring-1 ring-stone-200" aria-hidden />
+              <p className="break-words text-stone-900">{eventText(e)}</p>
               <p className="text-xs text-stone-500">
                 {format(new Date(e.created_at), 'd MMM, HH:mm')} · {who(e.actor)}
               </p>

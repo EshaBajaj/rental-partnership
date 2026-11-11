@@ -6,6 +6,7 @@ import { parseNumber } from '@shared/answers.ts';
 import { type Lang, pick, t } from './i18n.ts';
 import { amountWords, formatInr } from './flow.ts';
 import { SpeakAnswer, type VoiceCtx } from './SpeakAnswer.tsx';
+import { Icon } from '../lib/icons.tsx';
 
 export type { VoiceCtx };
 
@@ -148,7 +149,7 @@ function Choose({ q, lang, value, onChange, onPicked, mode, autoAdvance }: Props
       {!single && <p className="text-sm text-muted">{t(lang, 'pickAll')}</p>}
       {opts.map((o) => (
         <button key={o.value} type="button" role={single ? 'radio' : 'checkbox'} aria-checked={sel.includes(o.value)} className={optionClass(sel.includes(o.value))} onClick={() => toggle(o.value)}>
-          {!single && <span className="mr-2 inline-block w-5" aria-hidden="true">{sel.includes(o.value) ? '☑' : '☐'}</span>}
+          {!single && <Icon name={sel.includes(o.value) ? 'checked' : 'unchecked'} size={22} className={`mr-2 inline-block align-[-5px] ${sel.includes(o.value) ? 'text-primary' : 'text-muted'}`} />}
           {o.label}
         </button>
       ))}

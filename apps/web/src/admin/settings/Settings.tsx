@@ -1,35 +1,28 @@
-// Property settings, brand & trust, QR poster, Telegram test, password. (Admins have their own screen.)
+// Settings sub-pages (sidebar → Settings): property, brand & trust, QR poster, my account.
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
-import { FUNCTIONS_URL } from '../../lib/env.ts';
+import { Navigate, useParams } from 'react-router-dom';
+import { Icon } from '../../lib/icons.tsx';
 import { must, qk, supabase } from '../api.ts';
 import { useAdmin } from '../context.tsx';
-import { Link } from 'react-router-dom';
+import { passwordProblem } from '../admins/lastOwner.ts';
 import type { PropertyRow } from '../types.ts';
-import { Badge, download, ErrorBox, Modal, Spinner, useConfirm, useToast } from '../ui.tsx';
+import { Badge, download, ErrorBox, Modal, PageHeader, Spinner, useConfirm, useToast } from '../ui.tsx';
 import { BrandSettings } from './Brand.tsx';
+import { SETTINGS_SECTIONS } from './sections.ts';
 
 export default function Settings() {
-  const { me } = useAdmin();
+  const { section } = useParams();
+  const current = SETTINGS_SECTIONS.find((x) => x.slug === section);
+  if (!current) return <Navigate to="/admin/settings/property" replace />;
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Settings</h1>
-      <PropertyForm />
-      <BrandSettings />
-      <QrPoster />
-      <Telegram />
-      <Password />
-      <section className="card p-4 text-sm">
-        <h2 className="font-semibold">Admins</h2>
-        {me.role === 'owner' ? (
-          <p className="text-stone-600">
-            Invite people, change roles or remove access on the <Link className="underline" to="/admin/admins">Admins</Link> screen.
-          </p>
-        ) : (
-          <p className="text-stone-500">Only an owner can manage admins.</p>
-        )}
-      </section>
+      <PageHeader eyebrow="Settings" title={current.label} description={current.hint} />
+      {current.slug === 'property' && <PropertyForm />}
+      {current.slug === 'brand' && <BrandSettings />}
+      {current.slug === 'qr' && <QrPoster />}
+      {current.slug === 'account' && <Password />}
     </div>
   );
 }
@@ -68,9 +61,9 @@ function PropertyForm() {
   return (
     <section className="card space-y-3 p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="mr-auto font-semibold">Property</h2>
+        <h2 className="mr-auto font-semibold">Form status</h2>
         <Badge tone={property.status === 'open' ? 'green' : 'red'}>Form {property.status}</Badge>
-        <button className="btn-secondary px-3 py-1 text-sm" onClick={toggleStatus} disabled={save.isPending}>
+        <button className="btn-secondary btn-sm" onClick={toggleStatus} disabled={save.isPending}>
           {property.status === 'open' ? 'Close form' : 'Open form'}
         </button>
       </div>
@@ -142,6 +135,7 @@ function QrPoster() {
   const [png, setPng] = useState<string | null>(null);
   const [poster, setPoster] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const toast = useToast();
   useEffect(() => {
     QRCode.toDataURL(url, { width: 1024, margin: 2, errorCorrectionLevel: 'M' })
       .then(setPng)
@@ -149,25 +143,27 @@ function QrPoster() {
   }, [url]);
   return (
     <section className="card p-4">
-      <h2 className="font-semibold">QR code</h2>
       {err && <ErrorBox error={err} />}
       <div className="mt-2 flex flex-wrap items-center gap-4">
-        {png ? <img src={png} alt={`QR code for ${url}`} className="h-40 w-40 rounded-lg border" /> : <Spinner label="Making QR…" />}
+        {png ? <img src={png} alt={`QR code for ${url}`} className="h-40 w-40 rounded-xl border border-stone-200" /> : <Spinner label="Making QR…" />}
         <div className="space-y-2 text-sm">
           <p className="break-all text-stone-600">{url}</p>
           <div className="flex flex-wrap gap-2">
             <button className="btn-secondary" disabled={!png} onClick={() => png && downloadDataUrl(png, `qr-${property.slug}.png`)}>
+              <Icon name="download" />
               Download PNG
             </button>
             <button className="btn-secondary" onClick={() => setPoster(true)} disabled={!png}>
+              <Icon name="qr" />
               Printable poster
             </button>
             <button
               className="btn-ghost"
               onClick={() => {
-                void navigator.clipboard?.writeText(url);
+                void navigator.clipboard?.writeText(url).then(() => toast('Link copied', 'success'));
               }}
             >
+              <Icon name="external" />
               Copy link
             </button>
           </div>
@@ -216,72 +212,52 @@ function Poster({ png, name, brand, onClose }: { png: string; name: string; bran
   );
 }
 
-function Telegram() {
-  const { session } = useAdmin();
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  async function test() {
-    setBusy(true);
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token ?? session.access_token;
-      const res = await fetch(`${FUNCTIONS_URL}/notify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ kind: 'test' }),
-      });
-      const body = (await res.json().catch(() => ({}))) as { message?: string };
-      if (!res.ok) throw new Error(body.message ?? `HTTP ${res.status}`);
-      toast('Test message sent — check Telegram', 'success');
-    } catch (e) {
-      toast(`Telegram test failed: ${(e as Error).message}`, 'error');
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <section className="card flex flex-wrap items-center gap-3 p-4">
-      <div className="flex-1">
-        <h2 className="font-semibold">Telegram alerts</h2>
-        <p className="text-sm text-stone-600">Every “Ideal” lead is sent to your Telegram chat within seconds. Failed alerts are retried and shown on the lead.</p>
-      </div>
-      <button className="btn-secondary" disabled={busy} onClick={test}>
-        {busy ? 'Sending…' : 'Send test message'}
-      </button>
-    </section>
-  );
-}
-
 function Password() {
   const toast = useToast();
+  const { me } = useAdmin();
   const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
   const [busy, setBusy] = useState(false);
+  const problem = pw || pw2 ? passwordProblem(pw, pw2) : null;
   return (
-    <section className="card p-4">
-      <h2 className="font-semibold">Change my password</h2>
+    <section className="card max-w-lg space-y-4 p-4">
+      <p className="text-sm text-stone-600">
+        Signed in as <span className="font-medium text-stone-800">{me.email}</span> · {me.role}
+      </p>
       <form
-        className="mt-2 flex flex-wrap gap-2"
+        className="space-y-3"
         onSubmit={async (e) => {
           e.preventDefault();
+          if (passwordProblem(pw, pw2)) return;
           setBusy(true);
           const { error } = await supabase.auth.updateUser({ password: pw });
           setBusy(false);
           if (error) toast(error.message, 'error');
           else {
             setPw('');
+            setPw2('');
             toast('Password changed', 'success');
           }
         }}
       >
-        <label className="sr-only" htmlFor="newpw">
-          New password
-        </label>
-        <input id="newpw" type="password" autoComplete="new-password" minLength={10} className="input max-w-xs" placeholder="New password (10+ characters)" value={pw} onChange={(e) => setPw(e.target.value)} />
-        <button className="btn-secondary" disabled={busy || pw.length < 10}>
-          Change
+        <div>
+          <label className="label" htmlFor="newpw">
+            New password (at least 8 characters)
+          </label>
+          <input id="newpw" type="password" autoComplete="new-password" minLength={8} className="input" value={pw} onChange={(e) => setPw(e.target.value)} />
+        </div>
+        <div>
+          <label className="label" htmlFor="newpw2">
+            Type it again
+          </label>
+          <input id="newpw2" type="password" autoComplete="new-password" className="input" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+        </div>
+        {problem && pw2 && <p className="text-sm text-red-700">{problem}</p>}
+        <button className="btn-primary" disabled={busy || !pw || !!passwordProblem(pw, pw2)}>
+          <Icon name="key" />
+          {busy ? 'Saving…' : 'Change password'}
         </button>
       </form>
     </section>
   );
 }
-

@@ -9,6 +9,7 @@ import { useAdmin } from '../context.tsx';
 import type { AdminRow } from '../types.ts';
 import { Badge, ErrorBox, Spinner, useConfirm, useToast } from '../ui.tsx';
 import { inviteResultText, isLastOwner, validEmail } from './lastOwner.ts';
+import { Icon } from '../../lib/icons.tsx';
 
 export default function Admins() {
   const { me, session } = useAdmin();
@@ -62,7 +63,7 @@ export default function Admins() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Admins</h1>
+      <h1 className="page-title">Admins</h1>
       <section className="card p-4">
         <p className="text-sm text-stone-600">
           <b>Owners</b> can do everything, including managing admins. <b>Staff</b> can do everything else. There must always be at least one owner.
@@ -71,9 +72,9 @@ export default function Admins() {
           {list.map((a) => {
             const last = isLastOwner(a, list);
             return (
-              <li key={a.user_id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                <span className="min-w-0 flex-1 truncate">
-                  {a.email} {a.user_id === me.user_id && <Badge>you</Badge>}
+              <li key={a.user_id} className="flex flex-wrap items-center gap-2 py-3 text-sm">
+                <span className="min-w-0 basis-full truncate sm:basis-0 sm:flex-1">
+                  <span className="font-medium text-stone-900">{a.email}</span> {a.user_id === me.user_id && <Badge>you</Badge>}
                   <span className="block text-xs text-stone-500">added {format(new Date(a.created_at), 'd MMM yyyy')}</span>
                 </span>
                 <label className="sr-only" htmlFor={`role-${a.user_id}`}>
@@ -81,7 +82,7 @@ export default function Admins() {
                 </label>
                 <select
                   id={`role-${a.user_id}`}
-                  className="input w-auto py-1 text-sm"
+                  className="input h-10 w-auto flex-1 py-0 text-sm sm:flex-none"
                   value={a.role}
                   disabled={setRoleM.isPending || last}
                   title={last ? 'The only owner cannot be demoted — make someone else an owner first.' : undefined}
@@ -91,7 +92,7 @@ export default function Admins() {
                   <option value="staff">Staff</option>
                 </select>
                 <button
-                  className="btn-ghost px-2 py-1 text-red-700 disabled:opacity-40"
+                  className="btn-ghost text-red-700 hover:bg-red-50"
                   disabled={del.isPending || last}
                   title={last ? 'The only owner cannot be removed.' : undefined}
                   onClick={async () =>
@@ -103,6 +104,7 @@ export default function Admins() {
                     })) && del.mutate(a.user_id)
                   }
                 >
+                  <Icon name="delete" size={16} />
                   Remove
                 </button>
               </li>
@@ -123,15 +125,23 @@ export default function Admins() {
           <label className="sr-only" htmlFor="invite-email">
             Email
           </label>
-          <input id="invite-email" type="email" className="input max-w-xs" placeholder="email@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input
+            id="invite-email"
+            type="email"
+            className="input h-10 min-w-0 basis-full py-0 sm:max-w-xs sm:basis-auto sm:flex-1"
+            placeholder="email@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
           <label className="sr-only" htmlFor="invite-role">
             Role
           </label>
-          <select id="invite-role" className="input w-auto" value={role} onChange={(e) => setRole(e.target.value as 'owner' | 'staff')}>
+          <select id="invite-role" className="input h-10 w-auto flex-1 py-0 text-sm sm:flex-none" value={role} onChange={(e) => setRole(e.target.value as 'owner' | 'staff')}>
             <option value="staff">Staff</option>
             <option value="owner">Owner</option>
           </select>
-          <button className="btn-primary" disabled={!validEmail(email) || invite.isPending}>
+          <button className="btn-primary flex-1 sm:flex-none" disabled={!validEmail(email) || invite.isPending}>
+            <Icon name="mail" size={16} />
             {invite.isPending ? 'Sending…' : 'Send invite'}
           </button>
         </form>

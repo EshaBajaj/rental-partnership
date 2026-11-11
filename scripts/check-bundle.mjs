@@ -3,8 +3,9 @@
 import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const dist = new URL('../apps/web/dist/', import.meta.url).pathname;
+const dist = fileURLToPath(new URL('../apps/web/dist/', import.meta.url));
 const LIMIT = 150 * 1024;
 const manifest = JSON.parse(readFileSync(join(dist, '.vite/manifest.json'), 'utf8'));
 const entryKey = Object.keys(manifest).find((k) => manifest[k].isEntry);

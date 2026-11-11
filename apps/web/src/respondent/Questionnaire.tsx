@@ -7,6 +7,7 @@ import { QuestionInput } from './inputs.tsx';
 import { ApiError, flushTrack, type PublicProperty, submit, type SubmitPayload, track } from './api.ts';
 import { BrandMark, LangToggle, TrustFooter } from './Trust.tsx';
 import { clearOutbox, clearProgress, type Progress, saveDone, saveOutbox, saveProgress } from './storage.ts';
+import { Icon } from '../lib/icons.tsx';
 
 interface Props {
   slug: string;
@@ -232,14 +233,18 @@ export function Questionnaire({ slug, form, initial, resumed, source, property, 
       </main>
 
       <footer className="sticky bottom-0 mt-6 bg-bg pb-[env(safe-area-inset-bottom)] pt-3">
+        {/* soft fade so options scrolling under the bar don't look cut off */}
+        <div className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-bg to-transparent" aria-hidden="true" />
         <div className="flex gap-3">
           {index > 0 && (
-            <button type="button" className="r-btn-secondary" onClick={back} disabled={submitting || busy}>
+            <button type="button" className="r-btn-secondary w-28 shrink-0 px-3" onClick={back} disabled={submitting || busy}>
+              <Icon name="back" size={20} />
               {t(lang, 'back')}
             </button>
           )}
-          <button type="button" className="r-btn-primary flex-1" onClick={next} disabled={submitting || busy}>
+          <button type="button" className="r-btn-primary min-w-0 flex-1" onClick={next} disabled={submitting || busy}>
             {submitting ? t(lang, 'sending') : isLast ? t(lang, 'send') : !q.required && !answered ? t(lang, 'skip') : t(lang, 'next')}
+            {!submitting && <Icon name={isLast ? 'tick' : 'forward'} size={20} />}
           </button>
         </div>
         <TrustFooter property={property} lang={lang} />

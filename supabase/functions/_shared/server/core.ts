@@ -93,6 +93,8 @@ export function formatLeadMessage(l: LeadForNotify, adminUrl: string): string {
 
 /** Claim pending notifications (optionally for one response) and send them. */
 export async function processNotifications(deps: Deps, responseId: string | null = null, limit = 10) {
+  // Telegram not configured: leave notifications pending instead of burning retries into notify_failed.
+  if (!deps.messenger.enabled) return { sent: 0, failed: 0 };
   const rows = await deps.db.rpc<NotificationRow[]>('notification_claim', { p_limit: limit, p_response_id: responseId });
   let sent = 0;
   let failed = 0;

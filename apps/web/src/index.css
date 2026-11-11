@@ -2,32 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens. Calm, trustworthy, one accent colour; no flashing, no pop-ups. */
+/* Design tokens. Trust navy on cool slate (same values as tailwind.config.js); one accent, no flashing. */
 :root {
-  --bg: #FAF8F4;
+  --bg: #F7F9FB;
   --surface: #FFFFFF;
-  --text: #1C2430;
-  --muted: #5B6573;
-  --primary: #1E5A6B;
+  --text: #161D26;
+  --muted: #5B6676;
+  --primary: #1F4580;
   --primary-ink: #FFFFFF;
-  --primary-soft: #E6EFF1;
-  --border: #E7E2D9;
-  --success: #2F7D5B;
-  --error: #A8442F;
+  --primary-soft: #DCE7F6;
+  --border: #E1E7EE;
+  --success: #237A54;
+  --error: #B42318;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   .respondent {
-    --bg: #12171D;
-    --surface: #1A2129;
-    --text: #E8ECF0;
-    --muted: #9AA5B1;
-    --primary: #7DB7C7;
-    --primary-ink: #0E1A1F;
-    --primary-soft: #1D333B;
-    --border: #2B343E;
+    --bg: #0F1520;
+    --surface: #172030;
+    --text: #E7ECF3;
+    --muted: #9AA6B5;
+    --primary: #8FB0DF;
+    --primary-ink: #0F1A2E;
+    --primary-soft: #1C2D47;
+    --border: #283447;
     --success: #6CC39A;
-    --error: #E39880;
+    --error: #EA968D;
     color-scheme: dark;
   }
 }
@@ -42,17 +42,21 @@
 }
 
 @layer components {
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-medium transition disabled:cursor-not-allowed disabled:opacity-50; }
-  .btn-primary { @apply btn bg-brand-700 text-white hover:bg-brand-800 active:bg-brand-800; }
-  .btn-secondary { @apply btn border border-stone-300 bg-white text-stone-800 hover:bg-stone-100; }
+  /* admin: every button is 40px tall (36px for .btn-sm) so rows of mixed buttons line up */
+  .btn { @apply inline-flex h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-medium transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-sm { @apply h-9 px-3; }
+  .btn-icon { @apply w-10 px-0; }
+  .btn-primary { @apply btn bg-brand-700 text-white shadow-sm hover:bg-brand-800 active:bg-brand-900; }
+  .btn-secondary { @apply btn border border-stone-300 bg-white text-stone-800 hover:border-stone-400 hover:bg-stone-50; }
   .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
   .btn-ghost { @apply btn text-stone-700 hover:bg-stone-100; }
-  .input { @apply w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100; }
+  .input { @apply w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base text-stone-900 outline-none placeholder:text-stone-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-100; }
   .label { @apply mb-1 block text-sm font-medium text-stone-700; }
-  .card { @apply rounded-2xl border border-stone-200 bg-white shadow-sm; }
+  .card { @apply rounded-2xl border border-stone-200 bg-white shadow-card; }
+  .page-title { @apply text-xl font-semibold tracking-tight text-stone-900; }
 
-  /* respondent (token based, follows light/dark) */
-  .r-btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-4 text-lg font-medium transition disabled:cursor-not-allowed disabled:opacity-50; }
+  /* respondent (token based, follows light/dark); Back and Next share one 56px height */
+  .r-btn { @apply inline-flex h-14 items-center justify-center gap-2 rounded-xl px-5 text-lg font-medium transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50; }
   .r-btn-primary { @apply r-btn bg-primary text-primary-ink hover:opacity-95; }
   .r-btn-secondary { @apply r-btn border border-line bg-surface text-ink; }
   .r-input { @apply w-full rounded-xl border border-line bg-surface px-4 py-3 text-lg text-ink outline-none placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary-soft; }
