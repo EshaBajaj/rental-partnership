@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ERROR_TEXT, validateOne } from '@shared/answers.ts';
+import { ERROR_TEXT, upgradeRawAnswer, validateOne } from '@shared/answers.ts';
 import type { CompiledQuestion, ContactValue, RawAnswer } from '@shared/types.ts';
-import { ApiError, getForm, submit } from './api.ts';
+import { ApiError, getForm, type PublicProperty, submit } from './api.ts';
+import { BrandMark, DoneScreen, LangToggle, PrivacyPage, TrustFooter, Welcome } from './Trust.tsx';
 import { DEMO_MODE, FUNCTIONS_URL } from '../lib/env.ts';
 import { type Lang, t } from './i18n.ts';
 import { Questionnaire } from './Questionnaire.tsx';
@@ -64,89 +65,142 @@ function useOutbox(slug: string, onSent: (d: Done) => void) {
   return { queued, sending, flush, markQueued: () => setQueued(true) };
 }
 
+function useForm(slug: string) {
+  return useQuery({ queryKey: ['form', slug], queryFn: () => getForm(slug), retry: (n, e) => (e as ApiError).status !== 404 && n < 3 });
+}
+
 export function RespondentApp() {
   const { slug = '' } = useParams();
   const [params] = useSearchParams();
   const source = (params.get('src') ?? 'qr').slice(0, 60);
   const qc = useQueryClient();
   const [done, setDone] = useState<Done | null>(() => loadDone(slug));
-  const [langOverride, setLangOverride] = useState<Lang | null>(() => loadProgress(slug)?.lang ?? null);
+  const [langOverride, setLangOverride] = useState<Lang | null>(() => loadProgress(slug)?.lang ?? loadLang());
+  const [started, setStarted] = useState(() => !!loadProgress(slug));
   const outbox = useOutbox(slug, setDone);
-  const form = useQuery({ queryKey: ['form', slug], queryFn: () => getForm(slug), retry: (n, e) => (e as ApiError).status !== 404 && n < 3 });
+  const form = useForm(slug);
   const lang: Lang = langOverride ?? form.data?.property.default_lang ?? 'en';
+  const setLang = (l: Lang) => {
+    setLangOverride(l);
+    saveLang(l);
+  };
 
   useEffect(() => {
     document.documentElement.lang = lang;
-    if (form.data) document.title = form.data.property.name;
+    if (form.data) document.title = `${form.data.property.name} · ${form.data.property.brand_name}`;
   }, [lang, form.data]);
 
-  if (done) return <ThankYou lang={lang} done={done} onAgain={() => { clearDone(slug); setDone(null); }} />;
-
-  if (outbox.queued) {
-    return (
+  let body: React.ReactNode;
+  if (done && form.data) body = <DoneScreen property={form.data.property} lang={lang} name={done.name} waitlist={done.waitlist} onAgain={() => { clearDone(slug); setDone(null); setStarted(false); }} />;
+  else if (outbox.queued) {
+    body = (
       <Shell>
-        <div className="card space-y-4 p-6 text-center">
-          <div className="text-4xl">📶</div>
-          <p className="text-lg">{t(lang, 'offlineSaved')}</p>
-          <button className="btn-primary w-full py-4 text-lg" disabled={outbox.sending} onClick={() => void outbox.flush()}>
+        <div className="r-card space-y-4 p-6 text-center">
+          <p className="text-lg text-ink">{t(lang, 'offlineSaved')}</p>
+          <button className="r-btn-primary w-full" disabled={outbox.sending} onClick={() => void outbox.flush()}>
             {outbox.sending ? t(lang, 'sending') : t(lang, 'sendNow')}
           </button>
         </div>
       </Shell>
     );
-  }
-
-  if (form.isLoading) return <Shell><p className="text-center text-stone-500">{t(lang, 'loading')}</p></Shell>;
-  if (form.isError || !form.data) {
+  } else if (form.isLoading) body = <Shell><p className="text-center text-muted">{t(lang, 'loading')}</p></Shell>;
+  else if (form.isError || !form.data) {
     const notFound = (form.error as ApiError | null)?.status === 404;
-    return (
+    body = (
       <Shell>
-        <div className="card space-y-4 p-6 text-center">
-          <p>{notFound ? t(lang, 'notFound') : t(lang, 'loadError')}</p>
+        <div className="r-card space-y-4 p-6 text-center">
+          <p className="text-ink">{notFound ? t(lang, 'notFound') : t(lang, 'loadError')}</p>
           {(import.meta.env.DEV || location.hostname === 'localhost') && <SetupHint error={form.error as ApiError | null} />}
-          {!notFound && <button className="btn-primary w-full" onClick={() => void form.refetch()}>{t(lang, 'retry')}</button>}
+          {!notFound && <button className="r-btn-primary w-full" onClick={() => void form.refetch()}>{t(lang, 'retry')}</button>}
         </div>
       </Shell>
     );
+  } else if (done) {
+    body = <Shell><p className="text-center text-muted">{t(lang, 'loading')}</p></Shell>;
+  } else {
+    const data = form.data;
+    if (data.status === 'closed' || !data.form) {
+      body = <Closed slug={slug} lang={lang} property={data.property} message={data.closed_message ?? ''} source={source} onLang={setLang} onDone={setDone} onQueued={outbox.markQueued} />;
+    } else if (!started) {
+      body = <Welcome property={data.property} lang={lang} onLang={setLang} onStart={() => setStarted(true)} />;
+    } else {
+      const cfg = data.form.config;
+      const saved = loadProgress(slug);
+      const resumed = !!saved && Object.keys(saved.answers).length > 0;
+      // answers saved by an older app version are upgraded to the current shape
+      const savedAnswers = saved
+        ? Object.fromEntries(
+            Object.entries(saved.answers)
+              .map(([k]) => [k, cfg.questions.find((q) => q.key === k)] as const)
+              .filter(([, q]) => !!q)
+              .map(([k, q]) => [k, upgradeRawAnswer(q!, saved.answers[k])!]),
+          )
+        : {};
+      const initial: Progress = saved
+        ? { ...saved, form_version_id: data.form.id, answers: savedAnswers }
+        : { v: 1, slug, response_id: uuid(), form_version_id: data.form.id, answers: {}, current: null, started_at: Date.now(), lang, voice: {} };
+      body = (
+        <Questionnaire
+          key={data.form.id}
+          slug={slug}
+          form={data.form}
+          initial={initial}
+          resumed={resumed}
+          source={source}
+          property={data.property}
+          onLang={setLang}
+          onDone={() => setDone(loadDone(slug))}
+          onQueued={outbox.markQueued}
+          onFormChanged={() => void qc.invalidateQueries({ queryKey: ['form', slug] })}
+        />
+      );
+    }
   }
-
-  const data = form.data;
-  if (data.status === 'closed' || !data.form) {
-    return <Closed slug={slug} lang={lang} name={data.property.name} message={data.closed_message ?? ''} source={source} onLang={setLangOverride} onDone={setDone} onQueued={outbox.markQueued} />;
-  }
-
-  const saved = loadProgress(slug);
-  const resumed = !!saved && Object.keys(saved.answers).length > 0;
-  const initial: Progress = saved
-    ? {
-        ...saved,
-        form_version_id: data.form.id,
-        answers: Object.fromEntries(Object.entries(saved.answers).filter(([k]) => data.form!.config.questions.some((q) => q.key === k))),
-      }
-    : { v: 1, slug, response_id: uuid(), form_version_id: data.form.id, answers: {}, current: null, started_at: Date.now(), lang, voice: {} };
 
   return (
-    <>
-    {DEMO_MODE && (
-      <div className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-900">
-        Demo mode — not connected to Supabase. Answers stay on this device. Set VITE_SUPABASE_URL to go live.
-      </div>
-    )}
-    <Questionnaire
-      key={data.form.id}
-      slug={slug}
-      form={data.form}
-      initial={initial}
-      resumed={resumed}
-      source={source}
-      propertyName={data.property.name}
-      onLang={setLangOverride}
-      onDone={() => setDone(loadDone(slug))}
-      onQueued={outbox.markQueued}
-      onFormChanged={() => void qc.invalidateQueries({ queryKey: ['form', slug] })}
-    />
-    </>
+    <div className="respondent min-h-dvh bg-bg text-ink">
+      {DEMO_MODE && (
+        <div className="bg-primary-soft px-4 py-2 text-center text-sm text-ink">
+          Demo mode — not connected to Supabase. Answers stay on this device. Set VITE_SUPABASE_URL to go live.
+        </div>
+      )}
+      {body}
+    </div>
   );
+}
+
+/** /p/:slug/privacy */
+export function PrivacyRoute() {
+  const { slug = '' } = useParams();
+  const form = useForm(slug);
+  const [langOverride, setLangOverride] = useState<Lang | null>(() => loadLang());
+  const lang: Lang = langOverride ?? form.data?.property.default_lang ?? 'en';
+  return (
+    <div className="respondent min-h-dvh bg-bg text-ink">
+      {form.data ? (
+        <PrivacyPage property={form.data.property} lang={lang} onLang={(l) => { setLangOverride(l); saveLang(l); }} />
+      ) : (
+        <Shell><p className="text-center text-muted">{form.isError ? t(lang, 'loadError') : t(lang, 'loading')}</p></Shell>
+      )}
+    </div>
+  );
+}
+
+const LANG_KEY = 'sls.lang';
+function loadLang(): Lang | null {
+  try {
+    const l = localStorage.getItem(LANG_KEY);
+    return l === 'en' || l === 'hi' ? l : null;
+  } catch {
+    return null;
+  }
+}
+function saveLang(l: Lang) {
+  try {
+    localStorage.setItem(LANG_KEY, l);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Shown only on localhost / dev builds: what exactly failed and how to fix it. */
@@ -174,29 +228,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   return <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-4 py-8">{children}</div>;
 }
 
-function ThankYou({ lang, done, onAgain }: { lang: Lang; done: Done; onAgain: () => void }) {
-  return (
-    <Shell>
-      <div className="card space-y-4 p-8 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-100 text-3xl text-brand-700">✓</div>
-        <h1 className="text-2xl font-semibold">{t(lang, 'thanksTitle', { name: done.name.split(' ')[0] || '' }).replace(', !', '!')}</h1>
-        <p className="text-lg text-stone-700">{done.waitlist ? t(lang, 'waitlistDone') : t(lang, 'thanksBody')}</p>
-        {done.whatsapp && <p className="text-stone-600">{t(lang, 'thanksWhatsapp')}</p>}
-        <button className="text-sm text-stone-400 underline" onClick={onAgain}>
-          {t(lang, 'startOver')}
-        </button>
-      </div>
-    </Shell>
-  );
-}
-
 const WAITLIST_Q: CompiledQuestion = {
-  key: 'contact', type: 'contact', label_en: 'Contact', label_hi: null, help_en: null, help_hi: null, placeholder: null,
-  required: true, show_if: null, validation: {}, allow_other: false, allow_voice: false, options: [],
+  key: 'contact', kind: 'contact', label_en: 'Contact', label_hi: null, help_en: null, help_hi: null,
+  required: true, show_if: null, validation: {}, input_modes: null, options: [],
 };
 
-function Closed(props: { slug: string; lang: Lang; name: string; message: string; source: string; onLang: (l: Lang) => void; onDone: (d: Done) => void; onQueued: () => void }) {
-  const { slug, lang, name, message, source } = props;
+function Closed(props: { slug: string; lang: Lang; property: PublicProperty; message: string; source: string; onLang: (l: Lang) => void; onDone: (d: Done) => void; onQueued: () => void }) {
+  const { slug, lang, property, message, source } = props;
   const [open, setOpen] = useState(false);
   const [answer, setAnswer] = useState<RawAnswer | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -227,18 +265,17 @@ function Closed(props: { slug: string; lang: Lang; name: string; message: string
   }
 
   return (
-    <Shell>
-      <div className="mb-3 flex justify-end">
-        <button className="rounded-full border border-stone-300 px-3 py-1 text-sm" onClick={() => props.onLang(lang === 'en' ? 'hi' : 'en')}>
-          {t(lang, 'language')}
-        </button>
-      </div>
-      <div className="card space-y-4 p-6">
-        <p className="text-sm font-medium text-stone-500">{name}</p>
-        <h1 className="text-2xl font-semibold">{t(lang, 'closedTitle')}</h1>
-        <p className="whitespace-pre-line text-stone-700">{message}</p>
+    <div className="mx-auto flex min-h-dvh max-w-lg flex-col px-4 pb-6 pt-4">
+      <header className="mb-6 flex items-center justify-between gap-2">
+        <BrandMark property={property} />
+        <LangToggle lang={lang} onLang={props.onLang} />
+      </header>
+      <div className="space-y-4">
+        <p className="text-sm font-medium text-muted">{property.name}</p>
+        <h1 className="text-2xl font-semibold text-ink">{t(lang, 'closedTitle')}</h1>
+        <p className="whitespace-pre-line text-ink">{message}</p>
         {!open ? (
-          <button className="btn-primary w-full py-4 text-lg" onClick={() => setOpen(true)}>
+          <button className="r-btn-primary w-full" onClick={() => setOpen(true)}>
             {t(lang, 'waitlistCta')}
           </button>
         ) : (
@@ -254,13 +291,15 @@ function Closed(props: { slug: string; lang: Lang; name: string; message: string
               onUploaded={() => undefined}
               onBusy={() => undefined}
             />
-            {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-red-800">{error}</p>}
-            <button className="btn-primary w-full py-4 text-lg" disabled={sending} onClick={() => void join()}>
+            {error && <p role="alert" className="rounded-xl border border-line bg-surface p-3 text-danger">{error}</p>}
+            <button className="r-btn-primary w-full" disabled={sending} onClick={() => void join()}>
               {sending ? t(lang, 'sending') : t(lang, 'send')}
             </button>
           </>
         )}
       </div>
-    </Shell>
+      <div className="flex-1" />
+      <TrustFooter property={property} lang={lang} />
+    </div>
   );
 }

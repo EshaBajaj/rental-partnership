@@ -1,4 +1,5 @@
 // Leads board — the default admin screen.
+import { normalizeConfig } from '@shared/input-modes.ts';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PIPELINE_STATUSES, type PipelineStatus, type Tier } from '@shared/types.ts';
@@ -88,7 +89,7 @@ export function Board() {
     const fv = must(
       await supabase.from('form_versions').select('config').eq('property_id', property.id).eq('is_current', true).maybeSingle(),
     ) as Pick<FormVersionRow, 'config'> | null;
-    const keys = (fv?.config.questions ?? []).filter((q) => q.type !== 'contact').map((q) => ({ key: q.key, label: q.label_en }));
+    const keys = (fv ? normalizeConfig(fv.config).questions : []).filter((q) => q.kind !== 'contact').map((q) => ({ key: q.key, label: q.label_en }));
     download(`leads-${property.slug}-${new Date().toISOString().slice(0, 10)}.csv`, leadsToCsv(leads.data ?? [], keys), 'text/csv;charset=utf-8');
   }
 

@@ -2,13 +2,15 @@
 import { useEffect, useState } from 'react';
 import type { Cond, Op, ShowIf, ShowIfNode } from '@shared/types.ts';
 import { groupItems, isCond } from '@shared/showif.ts';
-import { opLabel, opsForType } from '@shared/validator.ts';
+import { opLabel } from '@shared/validator.ts';
 import {
   appendAt,
   choiceOptions,
   coerceValue,
   isChoice,
+  isDate,
   isNumeric,
+  opsFor,
   LIST_OPS,
   newCondition,
   NO_VALUE_OPS,
@@ -48,7 +50,7 @@ function NumberInput({ value, onChange, label }: { value: unknown; onChange: (n:
 export function ValueEditor({ refQ, op, value, onChange }: { refQ: RefQuestion | undefined; op: Op; value: unknown; onChange: (v: unknown) => void }) {
   if (NO_VALUE_OPS.includes(op)) return null;
   if (!refQ) return <input aria-label="Value" className="input w-40 py-1.5" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
-  if (isChoice(refQ.type)) {
+  if (isChoice(refQ)) {
     const opts = choiceOptions(refQ);
     if (LIST_OPS.includes(op)) {
       const sel = Array.isArray(value) ? value.map(String) : [];
@@ -79,7 +81,7 @@ export function ValueEditor({ refQ, op, value, onChange }: { refQ: RefQuestion |
       </select>
     );
   }
-  if (isNumeric(refQ.type)) {
+  if (isNumeric(refQ)) {
     if (op === 'between') {
       const v = Array.isArray(value) ? value : ['', ''];
       return (
@@ -90,7 +92,7 @@ export function ValueEditor({ refQ, op, value, onChange }: { refQ: RefQuestion |
     }
     return <NumberInput label="Value" value={value} onChange={onChange} />;
   }
-  if (refQ.type === 'date') {
+  if (isDate(refQ)) {
     if (op === 'between') {
       const v = Array.isArray(value) ? value : ['', ''];
       return (
@@ -122,7 +124,7 @@ export function ConditionRow({
   error?: string[];
 }) {
   const refQ = refs.find((r) => r.key === cond.q);
-  const ops = refQ ? opsForType(refQ.type) : (['answered', 'not_answered'] as Op[]);
+  const ops = refQ ? opsFor(refQ) : (['answered', 'not_answered'] as Op[]);
   const id = nextId();
   return (
     <div className={`rounded-xl border p-2 ${error?.length ? 'border-red-300 bg-red-50' : 'border-stone-200 bg-white'}`}>

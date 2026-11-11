@@ -2,9 +2,10 @@
 import type {
   FormConfig,
   Importance,
+  InputModes,
   Op,
   PipelineStatus,
-  QuestionType,
+  QuestionKind,
   ShowIf,
   StoredAnswers,
   Tier,
@@ -26,6 +27,17 @@ export interface PropertyRow {
   closed_message: string;
   default_lang: 'en' | 'hi';
   audio_retention_days: number;
+  brand_name: string;
+  contact_phone: string | null;
+  contact_whatsapp: string | null;
+  address_line: string | null;
+  logo_url: string | null;
+  shop_photo_url: string | null;
+  welcome_title_en: string | null;
+  welcome_title_hi: string | null;
+  welcome_body_en: string | null;
+  welcome_body_hi: string | null;
+  default_speech_lang: 'hi-IN' | 'en-IN';
   created_at: string;
   updated_at: string;
 }
@@ -46,18 +58,16 @@ export interface QuestionRow {
   id: string;
   property_id: string;
   key: string;
-  type: QuestionType;
+  kind: QuestionKind;
+  input_modes: InputModes | null;
   label_en: string;
   label_hi: string | null;
   help_en: string | null;
   help_hi: string | null;
-  placeholder: string | null;
   required: boolean;
   position: number;
   show_if: ShowIf | null;
   validation: Validation;
-  allow_other: boolean;
-  allow_voice: boolean;
   archived_at: string | null;
   first_published_at: string | null;
   created_at: string;
@@ -184,12 +194,15 @@ export interface VoiceNoteRow {
   id: string;
   response_id: string;
   question_key: string;
-  storage_path: string;
+  /** null when no recording was stored (silent mic / keep_audio off) */
+  storage_path: string | null;
   mime: string;
   bytes: number;
   duration_seconds: number;
   transcript_machine: string | null;
   transcript_final: string | null;
+  transcript_live: string | null;
+  audio_missing: boolean;
   edited_by_respondent: boolean;
   language: string | null;
   transcript_en: string | null;

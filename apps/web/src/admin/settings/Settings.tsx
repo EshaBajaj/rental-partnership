@@ -1,12 +1,14 @@
-// Property settings, QR poster, Telegram test, admins (owner only).
+// Property settings, brand & trust, QR poster, Telegram test, password. (Admins have their own screen.)
 import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import QRCode from 'qrcode';
 import { FUNCTIONS_URL } from '../../lib/env.ts';
-import { must, qk, rpc, supabase } from '../api.ts';
+import { must, qk, supabase } from '../api.ts';
 import { useAdmin } from '../context.tsx';
-import type { AdminRow, PropertyRow } from '../types.ts';
+import { Link } from 'react-router-dom';
+import type { PropertyRow } from '../types.ts';
 import { Badge, download, ErrorBox, Modal, Spinner, useConfirm, useToast } from '../ui.tsx';
+import { BrandSettings } from './Brand.tsx';
 
 export default function Settings() {
   const { me } = useAdmin();
@@ -14,10 +16,20 @@ export default function Settings() {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Settings</h1>
       <PropertyForm />
+      <BrandSettings />
       <QrPoster />
       <Telegram />
       <Password />
-      {me.role === 'owner' ? <Admins /> : <p className="text-sm text-stone-500">Only the owner can manage admins.</p>}
+      <section className="card p-4 text-sm">
+        <h2 className="font-semibold">Admins</h2>
+        {me.role === 'owner' ? (
+          <p className="text-stone-600">
+            Invite people, change roles or remove access on the <Link className="underline" to="/admin/admins">Admins</Link> screen.
+          </p>
+        ) : (
+          <p className="text-stone-500">Only an owner can manage admins.</p>
+        )}
+      </section>
     </div>
   );
 }
@@ -161,7 +173,7 @@ function QrPoster() {
           </div>
         </div>
       </div>
-      {poster && png && <Poster png={png} name={property.name} onClose={() => setPoster(false)} />}
+      {poster && png && <Poster png={png} name={property.name} brand={property.brand_name} onClose={() => setPoster(false)} />}
     </section>
   );
 }
@@ -173,7 +185,7 @@ function downloadDataUrl(dataUrl: string, name: string) {
   download(name, bytes, 'image/png');
 }
 
-function Poster({ png, name, onClose }: { png: string; name: string; onClose: () => void }) {
+function Poster({ png, name, brand, onClose }: { png: string; name: string; brand: string; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   function print() {
     const w = window.open('', '_blank', 'width=800,height=1000');
@@ -191,7 +203,9 @@ function Poster({ png, name, onClose }: { png: string; name: string; onClose: ()
         <img src={png} alt="QR code" className="mx-auto w-64" />
         <p className="text-lg">Scan &amp; answer a few quick questions (2 min). You can speak your answers.</p>
         <p className="text-lg">स्कैन करें और कुछ आसान सवालों के जवाब दें (2 मिनट)। आप बोलकर भी जवाब दे सकते हैं।</p>
-        <p className="text-sm text-stone-500">{name}</p>
+        <p className="text-sm text-stone-500">
+          {name} · {brand}
+        </p>
       </div>
       <div className="mt-4 flex justify-end">
         <button className="btn-primary" onClick={print}>
@@ -271,102 +285,3 @@ function Password() {
   );
 }
 
-function Admins() {
-  const { me } = useAdmin();
-  const qc = useQueryClient();
-  const toast = useToast();
-  const confirm = useConfirm();
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'staff' | 'owner'>('staff');
-  const admins = useQuery({
-    queryKey: qk.admins,
-    queryFn: async () => must(await supabase.from('admins').select('*').order('created_at')) as AdminRow[],
-  });
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: qk.admins });
-    qc.invalidateQueries({ queryKey: ['admin-emails'] });
-  };
-  const add = useMutation({
-    mutationFn: () => rpc('add_admin', { p_email: email.trim(), p_role: role }),
-    onSuccess: () => {
-      toast('Admin added', 'success');
-      setEmail('');
-      refresh();
-    },
-    onError: (e) => toast((e as Error).message, 'error'),
-  });
-  const setRoleM = useMutation({
-    mutationFn: async ({ id, r }: { id: string; r: 'owner' | 'staff' }) => must(await supabase.from('admins').update({ role: r }).eq('user_id', id).select('user_id')),
-    onSuccess: refresh,
-    onError: (e) => toast((e as Error).message, 'error'),
-  });
-  const del = useMutation({
-    mutationFn: async (id: string) => must(await supabase.from('admins').delete().eq('user_id', id).select('user_id')),
-    onSuccess: refresh,
-    onError: (e) => toast((e as Error).message, 'error'),
-  });
-  return (
-    <section className="card p-4">
-      <h2 className="font-semibold">Admins</h2>
-      <p className="text-sm text-stone-600">
-        Staff can do everything except manage admins. First create the person’s login in Supabase → Authentication → Users (“Invite user”), then add their email here.
-      </p>
-      {admins.isLoading ? (
-        <Spinner />
-      ) : (
-        <ul className="mt-2 divide-y divide-stone-100">
-          {(admins.data ?? []).map((a) => (
-            <li key={a.user_id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-              <span className="flex-1">
-                {a.email} {a.user_id === me.user_id && <Badge>you</Badge>}
-              </span>
-              <label className="sr-only" htmlFor={`role-${a.user_id}`}>
-                Role
-              </label>
-              <select
-                id={`role-${a.user_id}`}
-                className="input w-auto py-1"
-                value={a.role}
-                disabled={a.user_id === me.user_id}
-                onChange={(e) => setRoleM.mutate({ id: a.user_id, r: e.target.value as 'owner' | 'staff' })}
-              >
-                <option value="staff">Staff</option>
-                <option value="owner">Owner</option>
-              </select>
-              {a.user_id !== me.user_id && (
-                <button
-                  className="btn-ghost px-2 py-1 text-red-700"
-                  onClick={async () => (await confirm({ title: 'Remove admin?', body: <p>{a.email} will lose access to the admin board.</p>, confirm: 'Remove', danger: true })) && del.mutate(a.user_id)}
-                >
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      <form
-        className="mt-3 flex flex-wrap gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (email.trim()) add.mutate();
-        }}
-      >
-        <label className="sr-only" htmlFor="new-admin">
-          Email
-        </label>
-        <input id="new-admin" type="email" className="input max-w-xs" placeholder="email@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <label className="sr-only" htmlFor="new-role">
-          Role
-        </label>
-        <select id="new-role" className="input w-auto" value={role} onChange={(e) => setRole(e.target.value as 'staff' | 'owner')}>
-          <option value="staff">Staff</option>
-          <option value="owner">Owner</option>
-        </select>
-        <button className="btn-primary" disabled={add.isPending || !email.trim()}>
-          Add admin
-        </button>
-      </form>
-    </section>
-  );
-}

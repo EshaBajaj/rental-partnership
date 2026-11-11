@@ -13,50 +13,29 @@ import {
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { format } from 'date-fns';
-import type { DraftQuestion } from '@shared/compile.ts';
-import { classifyTypeChange } from '@shared/edit-safety.ts';
-import type { QuestionType } from '@shared/types.ts';
+import { classifyKindChange } from '@shared/edit-safety.ts';
+import type { QuestionKind } from '@shared/types.ts';
 import { PATH_KEY } from '@shared/types.ts';
+import { defaultModes, describeModes, normalizeConfig } from '@shared/input-modes.ts';
 import { hasErrors, type Issue, KEY_RE, MAX_SCREENS, screensPerPath, validateDraft } from '@shared/validator.ts';
 import { errMsg, must, qk, rpc, supabase } from '../api.ts';
 import { useAdmin } from '../context.tsx';
 import type { FormVersionRow, OptionRow, QuestionRow } from '../types.ts';
-import { Badge, ErrorBox, Modal, Spinner, useConfirm, useToast } from '../ui.tsx';
+import { Badge, ErrorBox, Modal, Sheet, Spinner, useConfirm, useToast } from '../ui.tsx';
 import { useAutosave } from './autosave.ts';
-import { describeShowIf, type RefQuestion } from './conditionValue.ts';
-import { QuestionEditor, TYPE_LABEL } from './QuestionEditor.tsx';
+import { describeShowIf } from './conditionValue.ts';
+import { QuestionEditor } from './QuestionEditor.tsx';
+import { KIND_LABEL } from './modes.ts';
+import { toDraft, toRef } from './draft.ts';
 import { planRemoval } from './removal.ts';
 import { loadProfileRefs } from './profileRefs.ts';
 import { uniqueSlug } from './removal.ts';
 
 const byPos = (a: QuestionRow, b: QuestionRow) => a.position - b.position || a.created_at.localeCompare(b.created_at);
 
-export function toDraft(q: QuestionRow): DraftQuestion {
-  return {
-    ...q,
-    validation: q.validation ?? {},
-    options: q.question_options.map((o) => ({
-      id: o.id,
-      value: o.value,
-      label_en: o.label_en,
-      label_hi: o.label_hi,
-      position: o.position,
-      archived_at: o.archived_at,
-      first_published_at: o.first_published_at,
-    })),
-  };
-}
+export { toDraft, toRef };
 
-export function toRef(q: QuestionRow): RefQuestion {
-  return {
-    key: q.key,
-    type: q.type,
-    label_en: q.label_en || q.key,
-    allow_other: q.allow_other,
-    archived: !!q.archived_at,
-    options: [...q.question_options].sort((a, b) => a.position - b.position).map((o) => ({ value: o.value, label_en: o.label_en, archived: !!o.archived_at })),
-  };
-}
+const modesLabel = (q: { kind: QuestionKind; input_modes: QuestionRow['input_modes'] }) => describeModes(q.input_modes, q.kind);
 
 export default function FormBuilder() {
   const { property } = useAdmin();
@@ -85,9 +64,9 @@ export default function FormBuilder() {
     if (r.data) setRows(r.data);
   }, [saver, questionsQ]);
 
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [typeDialog, setTypeDialog] = useState<{ q: QuestionRow; to: QuestionType } | null>(null);
+  const [kindDialog, setKindDialog] = useState<{ q: QuestionRow; to: QuestionKind } | null>(null);
   const [showVersions, setShowVersions] = useState(false);
 
   const all = useMemo(() => [...(rows ?? [])].sort(byPos), [rows]);
@@ -152,18 +131,18 @@ export default function FormBuilder() {
   }
 
   // ---------------------------------------------------------------- add
-  async function addQuestion(type: QuestionType) {
-    const key = uniqueSlug(type === 'contact' ? 'contact' : `new_${type}`, takenKeys, { mustStartWithLetter: true, fallback: 'q' });
+  async function addQuestion(kind: QuestionKind) {
+    const key = uniqueSlug(kind === 'contact' ? 'contact' : kind === 'standard' ? 'new_question' : `new_${kind}`, takenKeys, { mustStartWithLetter: true, fallback: 'q' });
     const res = await run('add', async () => {
       const maxPos = Math.max(0, ...all.map((q) => q.position)) + 1;
       const inserted = must(
         await supabase
           .from('questions')
-          .insert({ property_id: pid, key, type, label_en: 'New question', position: maxPos, required: type !== 'voice' && type !== 'long_text', allow_voice: false })
+          .insert({ property_id: pid, key, kind, input_modes: kind === 'standard' ? defaultModes() : null, label_en: 'New question', position: maxPos, required: true })
           .select('id')
           .single(),
       ) as { id: string };
-      if (type === 'single' || type === 'multi' || type === 'dropdown') {
+      if (kind === 'standard') {
         must(
           await supabase.from('question_options').insert([
             { question_id: inserted.id, value: 'option_1', label_en: 'Option 1', position: 0 },
@@ -172,14 +151,14 @@ export default function FormBuilder() {
         );
       }
       // keep the contact question last
-      const contact = active.find((q) => q.type === 'contact');
+      const contact = active.find((q) => q.kind === 'contact');
       const order = [...active.filter((q) => q.id !== contact?.id).map((q) => q.id), inserted.id, ...(contact ? [contact.id] : [])];
       await rpc('reorder_questions', { p_property_id: pid, p_ids: order });
       return inserted.id;
     });
     if (res) {
       await reload();
-      setOpen((s) => new Set(s).add(res));
+      setOpenId(res);
     }
   }
 
@@ -190,10 +169,7 @@ export default function FormBuilder() {
     const r = await run('option', async () => must(await supabase.from('question_options').insert({ question_id: q.id, value, label_en: label, position: pos }).select('*').single()) as OptionRow);
     if (r) setRows((rs) => rs!.map((x) => (x.id === q.id ? { ...x, question_options: [...x.question_options, r] } : x)));
   }
-  async function moveOption(q: QuestionRow, o: OptionRow, dir: -1 | 1) {
-    const ids = q.question_options.filter((x) => !x.archived_at).sort((a, b) => a.position - b.position).map((x) => x.id);
-    const i = ids.indexOf(o.id);
-    const next = arrayMove(ids, i, i + dir);
+  async function reorderOptions(q: QuestionRow, next: string[]) {
     setRows((rs) => rs!.map((x) => (x.id === q.id ? { ...x, question_options: x.question_options.map((y) => (next.includes(y.id) ? { ...y, position: next.indexOf(y.id) } : y)) } : x)));
     await run('option', () => rpc('reorder_options', { p_question_id: q.id, p_ids: next }));
   }
@@ -281,18 +257,19 @@ export default function FormBuilder() {
     await reload();
   }
 
-  // ---------------------------------------------------------------- type change
-  function changeType(q: QuestionRow, to: QuestionType) {
-    const kind = classifyTypeChange(q.type, to);
-    if (kind === 'same') return;
-    if (!q.first_published_at || kind === 'compatible') {
-      patchQuestion(q, { type: to });
-      if ((to === 'single' || to === 'multi' || to === 'dropdown') && q.question_options.filter((o) => !o.archived_at).length < 2) {
-        toast('Add at least two answer options.', 'info');
-      }
+  // ---------------------------------------------------------------- kind change
+  async function changeKind(q: QuestionRow, to: QuestionKind) {
+    if (classifyKindChange(q.kind, to) === 'same') return;
+    if (q.first_published_at) {
+      setKindDialog({ q, to });
       return;
     }
-    setTypeDialog({ q, to });
+    // never published: change in place (modes travel together with the kind)
+    patchQuestion(q, { kind: to, input_modes: to === 'standard' ? (q.input_modes ?? defaultModes()) : null, validation: {} });
+    if (to === 'standard' && q.question_options.filter((o) => !o.archived_at).length < 2) {
+      await saver.flush();
+      for (let i = q.question_options.filter((o) => !o.archived_at).length; i < 2; i++) await addOption(q, `Option ${i + 1}`);
+    }
   }
 
   async function restoreQuestion(q: QuestionRow) {
@@ -330,9 +307,10 @@ export default function FormBuilder() {
 
   const refsBefore = (q: QuestionRow) => {
     const i = active.findIndex((x) => x.id === q.id);
-    return active.slice(0, Math.max(i, 0)).filter((x) => x.type !== 'contact').map(toRef);
+    return active.slice(0, Math.max(i, 0)).filter((x) => x.kind !== 'contact').map(toRef);
   };
   const allRefs = new Map(all.map((q) => [q.key, toRef(q)]));
+  const openQ = openId ? all.find((q) => q.id === openId && !q.archived_at) ?? null : null;
 
   return (
     <div className="space-y-4">
@@ -372,43 +350,58 @@ export default function FormBuilder() {
             {active.map((q, i) => (
               <SortableQuestion
                 key={q.id}
+                modes={modesLabel(q)}
                 q={q}
                 index={i}
                 count={active.length}
-                open={open.has(q.id)}
-                onToggle={() => setOpen((s) => (s.has(q.id) ? new Set([...s].filter((x) => x !== q.id)) : new Set(s).add(q.id)))}
+                onOpen={() => setOpenId(q.id)}
                 onMove={(d) => moveQuestion(q, d)}
                 issues={issuesFor(q.key)}
                 summary={describeShowIf(q.show_if, allRefs)}
-              >
-                <QuestionEditor
-                  q={q}
-                  earlier={refsBefore(q)}
-                  issues={issuesFor(q.key)}
-                  status={saver.statusOf('questions', q.id)}
-                  optionStatus={(id) => saver.statusOf('question_options', id)}
-                  takenKeys={new Set([...takenKeys].filter((k) => k !== q.key))}
-                  onPatch={(patch) => patchQuestion(q, patch)}
-                  onRetry={() => void saver.flush()}
-                  onUndo={async () => {
-                    saver.discard('questions', q.id);
-                    await reload();
-                  }}
-                  onTypeChange={(t) => changeType(q, t)}
-                  onRemove={() => remove(q)}
-                  onOptionPatch={patchOption}
-                  onAddOption={(label) => addOption(q, label)}
-                  onMoveOption={(o, d) => moveOption(q, o, d)}
-                  onRemoveOption={(o) => remove(q, o)}
-                  onRestoreOption={restoreOption}
-                />
-              </SortableQuestion>
+              />
             ))}
           </ol>
         </SortableContext>
       </DndContext>
 
       <AddQuestion onAdd={addQuestion} disabled={!!busy} />
+
+      {openQ && (
+        <Sheet
+          title={openQ.label_en || 'Untitled question'}
+          onClose={() => {
+            void saver.flush();
+            setOpenId(null);
+          }}
+          actions={<span className="text-xs text-stone-500">{saver.busy ? 'Saving…' : saver.anyError ? 'Not saved' : 'Saved'}</span>}
+        >
+          <QuestionEditor
+            q={openQ}
+            earlier={refsBefore(openQ)}
+            issues={issuesFor(openQ.key)}
+            status={saver.statusOf('questions', openQ.id)}
+            optionStatus={(id) => saver.statusOf('question_options', id)}
+            takenKeys={new Set([...takenKeys].filter((k) => k !== openQ.key))}
+            brandName={property.brand_name}
+            onPatch={(patch) => patchQuestion(openQ, patch)}
+            onRetry={() => void saver.flush()}
+            onUndo={async () => {
+              saver.discard('questions', openQ.id);
+              await reload();
+            }}
+            onKindChange={(k) => void changeKind(openQ, k)}
+            onRemove={async () => {
+              await remove(openQ);
+              setOpenId((x) => (all.some((q) => q.id === x && !q.archived_at) ? x : null));
+            }}
+            onOptionPatch={patchOption}
+            onAddOption={(label) => addOption(openQ, label)}
+            onReorderOptions={(ids) => reorderOptions(openQ, ids)}
+            onRemoveOption={(o) => remove(openQ, o)}
+            onRestoreOption={restoreOption}
+          />
+        </Sheet>
+      )}
 
       {archived.length > 0 && (
         <details className="card p-3">
@@ -418,7 +411,7 @@ export default function FormBuilder() {
             {archived.map((q) => (
               <li key={q.id} className="flex items-center gap-2 py-2 text-sm">
                 <span className="flex-1">
-                  {q.label_en} <code className="text-xs text-stone-500">{q.key}</code> · {TYPE_LABEL[q.type]}
+                  {q.label_en} <code className="text-xs text-stone-500">{q.key}</code> · {modesLabel(q)}
                 </span>
                 {q.key !== PATH_KEY && (
                   <button className="btn-secondary px-3 py-1 text-sm" onClick={() => restoreQuestion(q)}>
@@ -431,20 +424,20 @@ export default function FormBuilder() {
         </details>
       )}
 
-      {typeDialog && (
-        <TypeChangeDialog
-          q={typeDialog.q}
-          to={typeDialog.to}
+      {kindDialog && (
+        <KindChangeDialog
+          q={kindDialog.q}
+          to={kindDialog.to}
           taken={takenKeys}
-          onClose={() => setTypeDialog(null)}
+          onClose={() => setKindDialog(null)}
           onConfirm={async (newKey) => {
-            const r = await run('type', () => rpc<string>('replace_question_type', { p_question_id: typeDialog.q.id, p_new_type: typeDialog.to, p_new_key: newKey }), 'Type changed — a new question replaced the old one');
+            const r = await run('kind', () => rpc<string>('replace_question_kind', { p_question_id: kindDialog.q.id, p_new_kind: kindDialog.to, p_new_key: newKey }), 'Kind changed — a new question replaced the old one');
             if (r) {
-              setTypeDialog(null);
+              setKindDialog(null);
               qc.invalidateQueries({ queryKey: ['profiles'] });
               qc.invalidateQueries({ queryKey: ['profile-sets'] });
               await reload();
-              setOpen((s) => new Set(s).add(r));
+              setOpenId(r);
             }
           }}
         />
@@ -469,24 +462,22 @@ function IssueList({ issues }: { issues: Issue[] }) {
 
 function SortableQuestion({
   q,
+  modes,
   index,
   count,
-  open,
-  onToggle,
+  onOpen,
   onMove,
   issues,
   summary,
-  children,
 }: {
   q: QuestionRow;
+  modes: string;
   index: number;
   count: number;
-  open: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
   onMove: (d: -1 | 1) => void;
   issues: Issue[];
   summary: string;
-  children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: q.id, disabled: q.key === PATH_KEY });
   const style = { transform: transform ? `translate3d(0, ${transform.y}px, 0)` : undefined, transition };
@@ -503,13 +494,13 @@ function SortableQuestion({
         >
           ⠿
         </button>
-        <button className="min-w-0 flex-1 text-left" onClick={onToggle} aria-expanded={open}>
+        <button className="min-w-0 flex-1 text-left" onClick={onOpen} aria-haspopup="dialog">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-stone-400">{index + 1}</span>
             <span className="font-medium">{q.label_en || <em className="text-stone-400">untitled</em>}</span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-            <Badge>{TYPE_LABEL[q.type]}</Badge>
+            <Badge>{modes}</Badge>
             <code className="text-stone-500">{q.key}</code>
             {q.required && <Badge>required</Badge>}
             {q.show_if && <Badge tone="blue" title={summary}>conditional</Badge>}
@@ -527,50 +518,50 @@ function SortableQuestion({
           </button>
         </div>
       </div>
-      {open && <div className="border-t border-stone-100 p-3">{children}</div>}
     </li>
   );
 }
 
-function AddQuestion({ onAdd, disabled }: { onAdd: (t: QuestionType) => void; disabled: boolean }) {
-  const [t, setT] = useState<QuestionType>('single');
+function AddQuestion({ onAdd, disabled }: { onAdd: (k: QuestionKind) => void; disabled: boolean }) {
+  const [k, setK] = useState<QuestionKind>('standard');
   return (
     <div className="card flex flex-wrap items-center gap-2 p-3">
-      <label className="text-sm font-medium" htmlFor="add-type">
+      <label className="text-sm font-medium" htmlFor="add-kind">
         Add a question:
       </label>
-      <select id="add-type" className="input w-auto" value={t} onChange={(e) => setT(e.target.value as QuestionType)}>
-        {(Object.keys(TYPE_LABEL) as QuestionType[]).map((k) => (
-          <option key={k} value={k}>
-            {TYPE_LABEL[k]}
+      <select id="add-kind" className="input w-auto" value={k} onChange={(e) => setK(e.target.value as QuestionKind)}>
+        {(Object.keys(KIND_LABEL) as QuestionKind[]).map((x) => (
+          <option key={x} value={x}>
+            {KIND_LABEL[x]}
           </option>
         ))}
       </select>
-      <button className="btn-primary" disabled={disabled} onClick={() => onAdd(t)}>
+      <button className="btn-primary" disabled={disabled} onClick={() => onAdd(k)}>
         + Add
       </button>
-      <span className="text-xs text-stone-500">New questions go just above the contact question.</span>
+      <span className="text-xs text-stone-500">New questions go just above the contact question. Choose, Type and Speak are set inside the question.</span>
     </div>
   );
 }
 
-function TypeChangeDialog({ q, to, taken, onClose, onConfirm }: { q: QuestionRow; to: QuestionType; taken: Set<string>; onClose: () => void; onConfirm: (key: string) => void }) {
+function KindChangeDialog({ q, to, taken, onClose, onConfirm }: { q: QuestionRow; to: QuestionKind; taken: Set<string>; onClose: () => void; onConfirm: (key: string) => void }) {
   const [key, setKey] = useState(() => uniqueSlug(`${q.key}_${to}`, taken, { mustStartWithLetter: true, fallback: 'q' }));
   const err = !KEY_RE.test(key) ? 'Use lowercase letters, numbers and _ (start with a letter).' : taken.has(key) ? 'This key is already used.' : null;
   return (
-    <Modal title={`Change “${q.label_en}” to ${TYPE_LABEL[to]}?`} onClose={onClose}>
+    <Modal title={`Change “${q.label_en}” to ${KIND_LABEL[to]}?`} onClose={onClose}>
       <div className="space-y-3 text-sm text-stone-700">
         <p>
-          This question has been published as <b>{TYPE_LABEL[q.type]}</b>. Answers already collected are stored in that format, so it cannot be converted in place.
+          This question has been published as <b>{KIND_LABEL[q.kind]}</b>. Answers already collected have that shape, so it cannot be converted in place.
         </p>
+        <p className="text-stone-500">(Switching Choose / Type / Speak on or off, the choose style or character limits never needs this — those are changed in place.)</p>
         <p>Instead we will:</p>
         <ul className="list-disc pl-5">
           <li>archive the old question (old leads keep their answers),</li>
-          <li>create a new {TYPE_LABEL[to]} question with the same text and a new key,</li>
+          <li>create a new {KIND_LABEL[to]} question with the same text and a new key,</li>
           <li>point every “when to show” condition and your draft Ideal Profile conditions at the new question.</li>
         </ul>
         <p className="rounded-lg bg-amber-50 p-2 text-amber-800">
-          Review those conditions afterwards — a comparison that made sense for the old type may not for the new one (they will be flagged). Then publish the form and the profiles draft.
+          Review those conditions afterwards — a comparison that made sense before may not now (they will be flagged). Then publish the form and the profiles draft.
         </p>
         <div>
           <label className="label" htmlFor="newkey">
@@ -585,7 +576,7 @@ function TypeChangeDialog({ q, to, taken, onClose, onConfirm }: { q: QuestionRow
           Cancel
         </button>
         <button className="btn-primary" disabled={!!err} onClick={() => onConfirm(key)}>
-          Change type
+          Change kind
         </button>
       </div>
     </Modal>
@@ -648,9 +639,9 @@ function VersionsDialog({ onClose }: { onClose: () => void }) {
               </span>
               {view?.id === v.id && (
                 <ol className="w-full list-decimal space-y-1 pl-6 text-stone-700">
-                  {v.config.questions.map((q) => (
+                  {normalizeConfig(v.config).questions.map((q) => (
                     <li key={q.key}>
-                      {q.label_en} <span className="text-xs text-stone-500">({TYPE_LABEL[q.type]}{q.show_if ? ', conditional' : ''})</span>
+                      {q.label_en} <span className="text-xs text-stone-500">({describeModes(q.input_modes, q.kind)}{q.show_if ? ', conditional' : ''})</span>
                     </li>
                   ))}
                 </ol>

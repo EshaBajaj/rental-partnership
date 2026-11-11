@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import type { CompiledQuestion, ContactValue, RawAnswer } from '@shared/types.ts';
+import type { ChooseMode, CompiledQuestion, ContactValue, InputMode, RawAnswer, TypeMode } from '@shared/types.ts';
 import { OTHER_VALUE } from '@shared/types.ts';
+import { effectiveMaxPicks, isSingleSelect, textMaxChars, withDefaults } from '@shared/input-modes.ts';
+import { parseNumber } from '@shared/answers.ts';
 import { type Lang, pick, t } from './i18n.ts';
-import { amountWords, formatInr, parseAmount } from './flow.ts';
-import { VoiceAnswer, type VoiceCtx } from './VoiceAnswer.tsx';
+import { amountWords, formatInr } from './flow.ts';
+import { SpeakAnswer, type VoiceCtx } from './SpeakAnswer.tsx';
+
+export type { VoiceCtx };
 
 interface Props {
   q: CompiledQuestion;
   lang: Lang;
   value: RawAnswer | undefined;
   onChange: (a: RawAnswer) => void;
-  /** single-choice tap → advance */
+  /** a single-select option was tapped and nothing else can be answered → advance */
   onPicked: () => void;
   ctx: VoiceCtx;
   uploads: number;
@@ -19,179 +23,175 @@ interface Props {
 }
 
 const optionClass = (selected: boolean) =>
-  `w-full rounded-2xl border-2 px-4 py-4 text-left text-lg transition ${
-    selected ? 'border-brand-700 bg-brand-50 font-semibold text-brand-800' : 'border-stone-200 bg-white hover:border-stone-300 active:bg-stone-50'
+  `w-full rounded-xl border-2 px-4 py-4 text-left text-lg transition ${
+    selected ? 'border-primary bg-primary-soft font-semibold text-ink' : 'border-line bg-surface text-ink hover:border-muted'
   }`;
 
 export function QuestionInput(p: Props) {
-  const { q, lang, value, onChange } = p;
-  const ph = q.placeholder ?? '';
-  switch (q.type) {
-    case 'single':
+  switch (p.q.kind) {
+    case 'contact':
+      return <Contact {...p} />;
     case 'yes_no':
-      return <SingleChoice {...p} />;
-    case 'dropdown':
-      return <Dropdown {...p} />;
-    case 'multi':
-      return <MultiChoice {...p} />;
-    case 'short_text':
-    case 'long_text':
-      if (q.allow_voice) {
-        return <VoiceAnswer {...p} placeholder={ph} multiline={q.type === 'long_text'} voiceFirst={false} />;
-      }
-      return q.type === 'long_text' ? (
-        <textarea
-          className="input min-h-32"
-          value={typeof value?.value === 'string' ? value.value : ''}
-          maxLength={q.validation.maxLength ?? 2000}
-          placeholder={ph}
-          aria-label={pick(lang, q.label_en, q.label_hi)}
-          onChange={(e) => onChange({ value: e.target.value })}
-        />
-      ) : (
-        <input
-          className="input"
-          value={typeof value?.value === 'string' ? value.value : ''}
-          maxLength={q.validation.maxLength ?? 200}
-          placeholder={ph}
-          aria-label={pick(lang, q.label_en, q.label_hi)}
-          onChange={(e) => onChange({ value: e.target.value })}
-        />
+      return (
+        <Choose {...p} mode={{ enabled: true, style: 'radio', min_picks: null, max_picks: 1, allow_other: false, other_max_chars: 0 }} autoAdvance />
       );
-    case 'voice':
-      return <VoiceAnswer {...p} placeholder={ph} multiline voiceFirst />;
-    case 'number':
-    case 'currency':
-      return <Amount {...p} />;
     case 'date':
       return (
         <input
           type="date"
-          className="input text-lg"
-          value={typeof value?.value === 'string' ? value.value : ''}
-          min={typeof q.validation.min === 'string' ? q.validation.min : undefined}
-          max={typeof q.validation.max === 'string' ? q.validation.max : undefined}
-          aria-label={pick(lang, q.label_en, q.label_hi)}
-          onChange={(e) => onChange({ value: e.target.value || null })}
+          className="r-input"
+          value={p.value?.text ?? ''}
+          min={typeof p.q.validation.min === 'string' ? p.q.validation.min : undefined}
+          max={typeof p.q.validation.max === 'string' ? p.q.validation.max : undefined}
+          aria-label={pick(p.lang, p.q.label_en, p.q.label_hi)}
+          onChange={(e) => p.onChange({ ...p.value, text: e.target.value })}
         />
       );
-    case 'contact':
-      return <Contact {...p} />;
+    case 'standard':
+      return <Standard {...p} />;
   }
 }
 
-function SingleChoice({ q, lang, value, onChange, onPicked }: Props) {
-  const sel = typeof value?.value === 'string' ? value.value : null;
-  const otherSelected = sel === OTHER_VALUE;
+function Standard(p: Props) {
+  const m = withDefaults(p.q.input_modes);
+  const order: InputMode[] = [m.primary, ...(['choose', 'type', 'speak'] as const).filter((x) => x !== m.primary && m[x].enabled)];
+  const answered = (k: InputMode) =>
+    k === 'choose' ? !!p.value?.choose?.length : k === 'type' ? !!p.value?.text && !p.value?.speech && !p.value?.voice : !!(p.value?.voice || p.value?.speech);
+  const [open, setOpen] = useState<Set<InputMode>>(() => new Set(order.filter((k, i) => i === 0 || answered(k))));
+  const onlyChoose = order.length === 1 && m.primary === 'choose';
+  const linkText: Record<InputMode, Parameters<typeof t>[1]> = { choose: 'chooseInstead', type: 'typeInstead', speak: 'speakInstead' };
   return (
-    <div className="space-y-3" role="radiogroup" aria-label={pick(lang, q.label_en, q.label_hi)}>
-      {q.options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={sel === o.value}
-          className={optionClass(sel === o.value)}
-          onClick={() => {
-            onChange({ value: o.value });
-            onPicked();
-          }}
-        >
-          {pick(lang, o.label_en, o.label_hi)}
-        </button>
-      ))}
-      {q.allow_other && (
-        <>
-          <button type="button" role="radio" aria-checked={otherSelected} className={optionClass(otherSelected)} onClick={() => onChange({ value: OTHER_VALUE, other_text: value?.other_text ?? '' })}>
-            {t(lang, 'other')}
-          </button>
-          {otherSelected && (
-            <input
-              autoFocus
-              className="input"
-              maxLength={200}
-              placeholder={t(lang, 'otherPlaceholder')}
-              value={value?.other_text ?? ''}
-              onChange={(e) => onChange({ value: OTHER_VALUE, other_text: e.target.value })}
-            />
-          )}
-        </>
+    <div className="space-y-5">
+      {order.map((k) => {
+        if (!open.has(k)) return null;
+        if (k === 'choose') return <Choose key={k} {...p} mode={m.choose} autoAdvance={onlyChoose} />;
+        if (k === 'type') return <TypeBox key={k} {...p} mode={m.type} maxChars={textMaxChars(m)} />;
+        return <SpeakAnswer key={k} q={p.q} speak={m.speak} maxChars={textMaxChars(m)} lang={p.lang} value={p.value} onChange={p.onChange} ctx={p.ctx} uploads={p.uploads} onUploaded={p.onUploaded} onBusy={p.onBusy} />;
+      })}
+      {order.some((k) => !open.has(k)) && (
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          {order
+            .filter((k) => !open.has(k))
+            .map((k) => (
+              <button key={k} type="button" className="r-link text-base" onClick={() => setOpen((s) => new Set([...s, k]))}>
+                {t(p.lang, linkText[k])}
+              </button>
+            ))}
+        </div>
       )}
     </div>
   );
 }
 
-function Dropdown({ q, lang, value, onChange }: Props) {
-  const sel = typeof value?.value === 'string' ? value.value : '';
-  return (
-    <div className="space-y-3">
-      <select className="input text-lg" value={sel} aria-label={pick(lang, q.label_en, q.label_hi)} onChange={(e) => onChange({ value: e.target.value || null, other_text: value?.other_text })}>
-        <option value="">{t(lang, 'choose')}</option>
-        {q.options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {pick(lang, o.label_en, o.label_hi)}
-          </option>
-        ))}
-        {q.allow_other && <option value={OTHER_VALUE}>{t(lang, 'other')}</option>}
-      </select>
-      {sel === OTHER_VALUE && (
-        <input className="input" maxLength={200} placeholder={t(lang, 'otherPlaceholder')} value={value?.other_text ?? ''} onChange={(e) => onChange({ value: OTHER_VALUE, other_text: e.target.value })} />
-      )}
-    </div>
-  );
-}
-
-function MultiChoice({ q, lang, value, onChange }: Props) {
-  const sel = Array.isArray(value?.value) ? (value!.value as string[]) : [];
+function Choose({ q, lang, value, onChange, onPicked, mode, autoAdvance }: Props & { mode: ChooseMode; autoAdvance?: boolean }) {
+  const sel = value?.choose ?? [];
+  const single = isSingleSelect(mode);
+  const max = effectiveMaxPicks(mode);
+  const opts = [...q.options.map((o) => ({ value: o.value, label: pick(lang, o.label_en, o.label_hi) })), ...(mode.allow_other ? [{ value: OTHER_VALUE, label: t(lang, 'other') }] : [])];
+  const set = (choose: string[]) => onChange({ ...value, choose });
   const toggle = (v: string) => {
+    if (single) {
+      set([v]);
+      if (v !== OTHER_VALUE && autoAdvance) onPicked();
+      return;
+    }
     const next = sel.includes(v) ? sel.filter((x) => x !== v) : [...sel, v];
-    if (q.validation.maxPicks && next.length > q.validation.maxPicks) return;
-    onChange({ value: next, other_text: value?.other_text });
+    if (max && next.length > max) return;
+    set(next);
   };
-  const opts = [...q.options.map((o) => ({ value: o.value, label: pick(lang, o.label_en, o.label_hi) })), ...(q.allow_other ? [{ value: OTHER_VALUE, label: t(lang, 'other') }] : [])];
+  const other = sel.includes(OTHER_VALUE) && (
+    <div>
+      <input
+        autoFocus
+        className="r-input"
+        maxLength={mode.other_max_chars || 200}
+        placeholder={t(lang, 'otherPlaceholder')}
+        value={value?.other_text ?? ''}
+        onChange={(e) => onChange({ ...value, choose: sel, other_text: e.target.value })}
+      />
+      <p className="mt-1 text-right text-xs text-muted">{(value?.other_text ?? '').length} / {mode.other_max_chars || 200}</p>
+    </div>
+  );
+  const label = pick(lang, q.label_en, q.label_hi);
+
+  if (mode.style === 'dropdown') {
+    return (
+      <div className="space-y-3">
+        <select className="r-input" value={sel[0] ?? ''} aria-label={label} onChange={(e) => set(e.target.value ? [e.target.value] : [])}>
+          <option value="">{t(lang, 'choose')}</option>
+          {opts.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        {other}
+      </div>
+    );
+  }
+  if (mode.style === 'chips') {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted">{t(lang, 'pickAll')}</p>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
+          {opts.map((o) => (
+            <button key={o.value} type="button" role="checkbox" aria-checked={sel.includes(o.value)} onClick={() => toggle(o.value)}
+              className={`rounded-full border-2 px-4 py-2 text-base ${sel.includes(o.value) ? 'border-primary bg-primary-soft font-semibold text-ink' : 'border-line bg-surface text-ink'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {other}
+      </div>
+    );
+  }
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-stone-500">{t(lang, 'pickAll')}</p>
+    <div className="space-y-3" role={single ? 'radiogroup' : 'group'} aria-label={label}>
+      {!single && <p className="text-sm text-muted">{t(lang, 'pickAll')}</p>}
       {opts.map((o) => (
-        <button key={o.value} type="button" role="checkbox" aria-checked={sel.includes(o.value)} className={optionClass(sel.includes(o.value))} onClick={() => toggle(o.value)}>
-          <span className="mr-2 inline-block w-5">{sel.includes(o.value) ? '☑' : '☐'}</span>
+        <button key={o.value} type="button" role={single ? 'radio' : 'checkbox'} aria-checked={sel.includes(o.value)} className={optionClass(sel.includes(o.value))} onClick={() => toggle(o.value)}>
+          {!single && <span className="mr-2 inline-block w-5" aria-hidden="true">{sel.includes(o.value) ? '☑' : '☐'}</span>}
           {o.label}
         </button>
       ))}
-      {sel.includes(OTHER_VALUE) && (
-        <input className="input" maxLength={200} placeholder={t(lang, 'otherPlaceholder')} value={value?.other_text ?? ''} onChange={(e) => onChange({ value: sel, other_text: e.target.value })} />
-      )}
+      {other}
     </div>
   );
 }
 
-function Amount({ q, lang, value, onChange }: Props) {
-  const num = typeof value?.value === 'number' ? value.value : null;
-  const [text, setText] = useState(num === null ? '' : String(num));
-  const currency = q.type === 'currency';
+function TypeBox({ q, lang, value, onChange, mode, maxChars }: Props & { mode: TypeMode; maxChars: number }) {
+  // Typing and speaking share one text answer: while a spoken answer exists, it is edited in the speaking box.
+  if (value?.speech || value?.voice) return <p className="text-sm text-muted">{t(lang, 'spokenAnswerAbove')}</p>;
+  const text = value?.text ?? '';
+  const numeric = mode.format === 'number' || mode.format === 'currency';
+  const n = numeric && text ? parseNumber(text) : null;
+  const placeholder = pick(lang, mode.placeholder_en ?? '', mode.placeholder_hi) || undefined;
+  const common = {
+    value: text,
+    maxLength: maxChars,
+    placeholder,
+    'aria-label': pick(lang, q.label_en, q.label_hi),
+    // typing replaces a spoken answer for this question
+    onChange: (e: { target: { value: string } }) => onChange({ ...value, text: e.target.value, voice: false, speech: null }),
+  };
   return (
-    <div className="space-y-2">
-      <div className="relative">
-        {currency && <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xl text-stone-500">₹</span>}
-        <input
-          className={`input text-2xl ${currency ? 'pl-10' : ''}`}
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder={q.placeholder ?? (currency ? '50000' : '')}
-          value={text}
-          aria-label={pick(lang, q.label_en, q.label_hi)}
-          onChange={(e) => {
-            const s = e.target.value.replace(/[^\d.,]/g, '');
-            setText(s);
-            onChange({ value: s === '' ? null : parseAmount(s) });
-          }}
-        />
-      </div>
-      {currency && (
-        <p className="min-h-5 text-sm text-stone-600" aria-live="polite">
-          {num !== null ? `${formatInr(num)} ${amountWords(num, lang) ? `(${amountWords(num, lang)})` : ''}` : t(lang, 'amountHint')}
-        </p>
+    <div className="space-y-1">
+      {mode.multiline ? (
+        <textarea className="r-input min-h-32 resize-y" {...common} />
+      ) : (
+        <div className="relative">
+          {mode.format === 'currency' && <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xl text-muted">₹</span>}
+          <input
+            className={`r-input ${numeric ? 'text-2xl' : ''} ${mode.format === 'currency' ? 'pl-10' : ''}`}
+            inputMode={numeric ? 'decimal' : mode.format === 'email' ? 'email' : 'text'}
+            type={mode.format === 'email' ? 'email' : 'text'}
+            autoComplete="off"
+            {...common}
+          />
+        </div>
       )}
+      <div className="flex justify-between text-xs text-muted" aria-live="polite">
+        <span>{mode.format === 'currency' ? (n !== null ? `${formatInr(n)} ${amountWords(n, lang) ? `(${amountWords(n, lang)})` : ''}` : t(lang, 'amountHint')) : ''}</span>
+        {!numeric && <span>{t(lang, 'charsLeft', { n: text.length, max: maxChars })}</span>}
+      </div>
     </div>
   );
 }
@@ -204,33 +204,24 @@ function Contact({ lang, value, onChange }: Props) {
   const set = (patch: Partial<ContactValue>) => onChange({ value: { ...c, ...patch } });
   return (
     <div className="space-y-4">
+      <p className="text-muted">{t(lang, 'contactHelper')}</p>
       <div>
-        <label className="label" htmlFor="c-name">{t(lang, 'name')}</label>
-        <input id="c-name" className="input text-lg" autoComplete="name" maxLength={80} value={c.name} onChange={(e) => set({ name: e.target.value })} />
+        <label className="mb-1 block text-sm font-medium text-ink" htmlFor="c-name">{t(lang, 'name')}</label>
+        <input id="c-name" className="r-input" autoComplete="name" maxLength={80} value={c.name} onChange={(e) => set({ name: e.target.value })} />
       </div>
       <div>
-        <label className="label" htmlFor="c-phone">{t(lang, 'phone')}</label>
+        <label className="mb-1 block text-sm font-medium text-ink" htmlFor="c-phone">{t(lang, 'phone')}</label>
         <div className="flex">
-          <span className="flex items-center rounded-l-xl border border-r-0 border-stone-300 bg-stone-100 px-3 text-stone-600">+91</span>
-          <input
-            id="c-phone"
-            className="input rounded-l-none text-lg"
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            maxLength={20}
-            placeholder="98765 43210"
-            value={c.phone}
-            onChange={(e) => set({ phone: e.target.value })}
-          />
+          <span className="flex items-center rounded-l-xl border border-r-0 border-line bg-primary-soft px-3 text-muted">+91</span>
+          <input id="c-phone" className="r-input rounded-l-none" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} placeholder="98765 43210" value={c.phone} onChange={(e) => set({ phone: e.target.value })} />
         </div>
       </div>
-      <label className="flex items-center gap-3 rounded-xl bg-white p-3">
-        <input type="checkbox" className="h-6 w-6 accent-brand-700" checked={c.whatsapp_ok} onChange={(e) => set({ whatsapp_ok: e.target.checked })} />
+      <label className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3 text-ink">
+        <input type="checkbox" className="h-6 w-6 accent-[var(--primary)]" checked={c.whatsapp_ok} onChange={(e) => set({ whatsapp_ok: e.target.checked })} />
         <span>{t(lang, 'whatsapp')}</span>
       </label>
-      <label className="flex items-center gap-3 rounded-xl bg-white p-3">
-        <input type="checkbox" className="h-6 w-6 accent-brand-700" checked={c.consent} onChange={(e) => set({ consent: e.target.checked })} />
+      <label className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3 text-ink">
+        <input type="checkbox" className="h-6 w-6 accent-[var(--primary)]" checked={c.consent} onChange={(e) => set({ consent: e.target.checked })} />
         <span>{t(lang, 'consent')}</span>
       </label>
     </div>

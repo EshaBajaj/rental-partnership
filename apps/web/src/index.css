@@ -2,10 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens. Calm, trustworthy, one accent colour; no flashing, no pop-ups. */
+:root {
+  --bg: #FAF8F4;
+  --surface: #FFFFFF;
+  --text: #1C2430;
+  --muted: #5B6573;
+  --primary: #1E5A6B;
+  --primary-ink: #FFFFFF;
+  --primary-soft: #E6EFF1;
+  --border: #E7E2D9;
+  --success: #2F7D5B;
+  --error: #A8442F;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  .respondent {
+    --bg: #12171D;
+    --surface: #1A2129;
+    --text: #E8ECF0;
+    --muted: #9AA5B1;
+    --primary: #7DB7C7;
+    --primary-ink: #0E1A1F;
+    --primary-soft: #1D333B;
+    --border: #2B343E;
+    --success: #6CC39A;
+    --error: #E39880;
+    color-scheme: dark;
+  }
+}
+
 @layer base {
   html { -webkit-tap-highlight-color: transparent; }
   body { min-height: 100dvh; }
-  :focus-visible { outline: 3px solid theme('colors.brand.500'); outline-offset: 2px; }
+  :focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 }
 
 @layer components {
@@ -17,4 +50,12 @@
   .input { @apply w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100; }
   .label { @apply mb-1 block text-sm font-medium text-stone-700; }
   .card { @apply rounded-2xl border border-stone-200 bg-white shadow-sm; }
+
+  /* respondent (token based, follows light/dark) */
+  .r-btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-4 text-lg font-medium transition disabled:cursor-not-allowed disabled:opacity-50; }
+  .r-btn-primary { @apply r-btn bg-primary text-primary-ink hover:opacity-95; }
+  .r-btn-secondary { @apply r-btn border border-line bg-surface text-ink; }
+  .r-input { @apply w-full rounded-xl border border-line bg-surface px-4 py-3 text-lg text-ink outline-none placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary-soft; }
+  .r-card { @apply rounded-xl border border-line bg-surface; }
+  .r-link { @apply text-primary underline decoration-1 underline-offset-4; }
 }

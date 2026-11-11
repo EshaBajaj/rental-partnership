@@ -41,19 +41,43 @@ async function call<T>(path: string, init: RequestInit & { timeoutMs?: number } 
   return body as T;
 }
 
+export interface PublicProperty {
+  slug: string;
+  name: string;
+  default_lang: 'en' | 'hi';
+  brand_name: string;
+  contact_phone: string | null;
+  contact_whatsapp: string | null;
+  address_line: string | null;
+  logo_url: string | null;
+  shop_photo_url: string | null;
+  welcome_title_en: string | null;
+  welcome_title_hi: string | null;
+  welcome_body_en: string | null;
+  welcome_body_hi: string | null;
+  default_speech_lang: 'hi-IN' | 'en-IN';
+  audio_retention_days: number;
+}
+
 export interface FormResponse {
   status: 'open' | 'closed';
-  property: { slug: string; name: string; default_lang: 'en' | 'hi' };
+  property: PublicProperty;
   closed_message?: string;
   form: { id: string; version: number; config: FormConfig } | null;
 }
 
 export async function getForm(slug: string): Promise<FormResponse> {
   if (DEMO_MODE) {
-    const { DEMO_CONFIG, DEMO_FORM_ID } = await import('./demo.ts');
-    return { status: 'open', property: { slug, name: 'Demo shop (not connected)', default_lang: 'en' }, form: { id: DEMO_FORM_ID, version: 1, config: DEMO_CONFIG } };
+    const { DEMO_CONFIG, DEMO_FORM_ID, DEMO_PROPERTY } = await import('./demo.ts');
+    return { status: 'open', property: DEMO_PROPERTY(slug), form: { id: DEMO_FORM_ID, version: 1, config: DEMO_CONFIG } };
   }
-  return call<FormResponse>(`form?slug=${encodeURIComponent(slug)}`, { method: 'GET' });
+  const r = await call<FormResponse>(`form?slug=${encodeURIComponent(slug)}`, { method: 'GET' });
+  // older server versions may still send a schema-1 config: upgrade it here as well
+  if (r.form) {
+    const { normalizeConfig } = await import('@shared/input-modes.ts');
+    r.form = { ...r.form, config: normalizeConfig(r.form.config) };
+  }
+  return r;
 }
 
 export interface SubmitPayload {

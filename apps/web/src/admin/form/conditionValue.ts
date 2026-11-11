@@ -1,16 +1,18 @@
 // Condition editor helpers: default values, value coercion when the operator/question changes,
 // human descriptions. Used by the show_if builder, profile conditions and never rules.
-import type { Cond, Op, QuestionType, ShowIf, ShowIfNode } from '@shared/types.ts';
+import type { Cond, InputModes, Op, QuestionKind, ShowIf, ShowIfNode } from '@shared/types.ts';
 import { OTHER_VALUE } from '@shared/types.ts';
-import { opLabel, opsForType } from '@shared/validator.ts';
-import { YES_NO_OPTIONS } from '@shared/compile.ts';
+import { opLabel, opsForQuestion } from '@shared/validator.ts';
+import { hasChoices, YES_NO_OPTIONS } from '@shared/compile.ts';
+import { isNumericFormat, withDefaults } from '@shared/input-modes.ts';
 import { groupItems, isCond } from '@shared/showif.ts';
 
+/** What a condition editor needs to know about the question a condition refers to. */
 export interface RefQuestion {
   key: string;
-  type: QuestionType;
+  kind: QuestionKind;
+  input_modes: InputModes | null;
   label_en: string;
-  allow_other: boolean;
   archived?: boolean;
   options: { value: string; label_en: string; archived?: boolean }[];
 }
@@ -19,31 +21,38 @@ export const LIST_OPS: Op[] = ['in', 'not_in', 'contains_any', 'contains_all'];
 export const NO_VALUE_OPS: Op[] = ['answered', 'not_answered'];
 
 export function choiceOptions(ref: RefQuestion): { value: string; label_en: string; archived?: boolean }[] {
-  const base = ref.type === 'yes_no' ? YES_NO_OPTIONS.map((o) => ({ value: o.value, label_en: o.label_en })) : ref.options;
-  return ref.allow_other ? [...base, { value: OTHER_VALUE, label_en: 'Other (typed)' }] : base;
+  const base = ref.kind === 'yes_no' ? YES_NO_OPTIONS.map((o) => ({ value: o.value, label_en: o.label_en })) : ref.options;
+  const allowOther = ref.kind === 'standard' && withDefaults(ref.input_modes).choose.allow_other;
+  return allowOther ? [...base, { value: OTHER_VALUE, label_en: 'Other (typed)' }] : base;
 }
 
-export function isChoice(t: QuestionType): boolean {
-  return t === 'single' || t === 'multi' || t === 'dropdown' || t === 'yes_no';
+/** Number/currency typing → numeric comparisons. */
+export function isNumeric(ref: RefQuestion): boolean {
+  return ref.kind === 'standard' && isNumericFormat(withDefaults(ref.input_modes));
 }
-export function isNumeric(t: QuestionType): boolean {
-  return t === 'number' || t === 'currency';
+/** Compares picked options (choose mode / yes-no), unless the question is numeric. */
+export function isChoice(ref: RefQuestion): boolean {
+  return hasChoices(ref) && !isNumeric(ref);
 }
+export function isDate(ref: RefQuestion): boolean {
+  return ref.kind === 'date';
+}
+export const opsFor = (ref: RefQuestion): Op[] => opsForQuestion(ref);
 
 export function defaultValue(op: Op, ref: RefQuestion | undefined): unknown {
   if (NO_VALUE_OPS.includes(op)) return undefined;
   if (LIST_OPS.includes(op)) return [];
-  if (op === 'between') return ref && isNumeric(ref.type) ? [0, 0] : ['', ''];
+  if (op === 'between') return ref && isNumeric(ref) ? [0, 0] : ['', ''];
   if (!ref) return '';
-  if (isChoice(ref.type)) return choiceOptions(ref).filter((o) => !o.archived)[0]?.value ?? '';
-  if (isNumeric(ref.type)) return 0;
+  if (isChoice(ref)) return choiceOptions(ref).filter((o) => !o.archived)[0]?.value ?? '';
+  if (isNumeric(ref)) return 0;
   return '';
 }
 
 /** Keep as much of the old value as makes sense after the operator changes. */
 export function coerceValue(op: Op, ref: RefQuestion | undefined, prev: unknown): unknown {
   if (NO_VALUE_OPS.includes(op)) return undefined;
-  const numeric = !!ref && isNumeric(ref.type);
+  const numeric = !!ref && isNumeric(ref);
   const fix = (x: unknown) => (numeric ? toNumberOr(x, 0) : x === undefined || x === null ? '' : x);
   if (LIST_OPS.includes(op)) {
     if (Array.isArray(prev)) return prev.filter((x) => x !== '' && x !== null && x !== undefined);
@@ -73,7 +82,7 @@ export function parseNumberInput(s: string): number | null {
 }
 
 export function newCondition(ref: RefQuestion | undefined, key: string): Cond {
-  const op = ref ? opsForType(ref.type)[0] ?? 'answered' : 'answered';
+  const op = ref ? opsForQuestion(ref)[0] ?? 'answered' : 'answered';
   const c: Cond = { q: key, op };
   const v = defaultValue(op, ref);
   if (v !== undefined) c.v = v;
@@ -83,8 +92,8 @@ export function newCondition(ref: RefQuestion | undefined, key: string): Cond {
 const inr = new Intl.NumberFormat('en-IN');
 function valueText(ref: RefQuestion | undefined, v: unknown): string {
   if (Array.isArray(v)) return v.map((x) => valueText(ref, x)).join(', ');
-  if (ref && isChoice(ref.type)) return choiceOptions(ref).find((o) => o.value === String(v))?.label_en ?? String(v);
-  if (ref?.type === 'currency' && typeof v === 'number') return `₹${inr.format(v)}`;
+  if (ref && isChoice(ref)) return choiceOptions(ref).find((o) => o.value === String(v))?.label_en ?? String(v);
+  if (ref && ref.kind === 'standard' && withDefaults(ref.input_modes).type.format === 'currency' && typeof v === 'number') return `₹${inr.format(v)}`;
   return String(v ?? '');
 }
 

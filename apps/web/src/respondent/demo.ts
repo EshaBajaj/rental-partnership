@@ -3,15 +3,34 @@
 // works end to end in the browser; answers are kept only on this device and never sent anywhere.
 // Lazy-loaded so it adds nothing to the normal bundle.
 import type { FormConfig } from '@shared/types.ts';
+import type { PublicProperty } from './api.ts';
 
 export const DEMO_FORM_ID = '00000000-0000-4000-8000-00000000d3e0';
 
+export const DEMO_PROPERTY = (slug: string): PublicProperty => ({
+  slug,
+  name: 'Main Road Shop (demo)',
+  default_lang: 'en',
+  brand_name: 'Bajaj Computers',
+  contact_phone: null,
+  contact_whatsapp: null,
+  address_line: 'Main Road',
+  logo_url: null,
+  shop_photo_url: null,
+  welcome_title_en: 'A shop is available on Main Road',
+  welcome_title_hi: 'मेन रोड पर एक दुकान उपलब्ध है',
+  welcome_body_en: 'Tell us a little about your plans — to rent it, or to run it in partnership with us.',
+  welcome_body_hi: 'अपनी योजना के बारे में थोड़ा बताइए — किराये पर लेना चाहते हैं या हमारे साथ साझेदारी में चलाना।',
+  default_speech_lang: 'hi-IN',
+  audio_retention_days: 180,
+});
+
 export const DEMO_CONFIG: FormConfig = {
-  "schema": 1,
+  "schema": 2,
   "questions": [
     {
       "key": "path",
-      "type": "single",
+      "kind": "standard",
       "help_en": null,
       "help_hi": null,
       "options": [
@@ -36,13 +55,37 @@ export const DEMO_CONFIG: FormConfig = {
       "label_hi": "क्या आप यह दुकान किराये पर लेना चाहते हैं या हमारे साथ साझेदारी करना चाहते हैं?",
       "required": true,
       "validation": {},
-      "allow_other": false,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": {
+        "type": {
+          "format": "any",
+          "enabled": false,
+          "max_chars": 300,
+          "min_chars": null,
+          "multiline": false,
+          "placeholder_en": null,
+          "placeholder_hi": null
+        },
+        "speak": {
+          "enabled": false,
+          "allow_edit": true,
+          "keep_audio": true,
+          "max_seconds": 120,
+          "live_transcript": true
+        },
+        "choose": {
+          "style": "radio",
+          "enabled": true,
+          "max_picks": null,
+          "min_picks": null,
+          "allow_other": false,
+          "other_max_chars": 200
+        },
+        "primary": "choose"
+      }
     },
     {
       "key": "business_type",
-      "type": "single",
+      "kind": "standard",
       "help_en": null,
       "help_hi": null,
       "options": [
@@ -82,13 +125,37 @@ export const DEMO_CONFIG: FormConfig = {
       "label_hi": "आप यहाँ कौन सा व्यवसाय चलाना चाहते हैं?",
       "required": true,
       "validation": {},
-      "allow_other": true,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": {
+        "type": {
+          "format": "any",
+          "enabled": false,
+          "max_chars": 300,
+          "min_chars": null,
+          "multiline": false,
+          "placeholder_en": null,
+          "placeholder_hi": null
+        },
+        "speak": {
+          "enabled": false,
+          "allow_edit": true,
+          "keep_audio": true,
+          "max_seconds": 120,
+          "live_transcript": true
+        },
+        "choose": {
+          "style": "radio",
+          "enabled": true,
+          "max_picks": null,
+          "min_picks": null,
+          "allow_other": true,
+          "other_max_chars": 200
+        },
+        "primary": "choose"
+      }
     },
     {
       "key": "start_when",
-      "type": "single",
+      "kind": "standard",
       "help_en": null,
       "help_hi": null,
       "options": [
@@ -118,13 +185,37 @@ export const DEMO_CONFIG: FormConfig = {
       "label_hi": "आप कब शुरू करना चाहते हैं?",
       "required": true,
       "validation": {},
-      "allow_other": false,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": {
+        "type": {
+          "format": "any",
+          "enabled": false,
+          "max_chars": 300,
+          "min_chars": null,
+          "multiline": false,
+          "placeholder_en": null,
+          "placeholder_hi": null
+        },
+        "speak": {
+          "enabled": false,
+          "allow_edit": true,
+          "keep_audio": true,
+          "max_seconds": 120,
+          "live_transcript": true
+        },
+        "choose": {
+          "style": "radio",
+          "enabled": true,
+          "max_picks": null,
+          "min_picks": null,
+          "allow_other": false,
+          "other_max_chars": 200
+        },
+        "primary": "choose"
+      }
     },
     {
       "key": "rent_budget",
-      "type": "currency",
+      "kind": "standard",
       "help_en": "In rupees per month",
       "help_hi": "रुपये प्रति माह",
       "options": [],
@@ -147,13 +238,37 @@ export const DEMO_CONFIG: FormConfig = {
         "max": 10000000,
         "min": 0
       },
-      "allow_other": false,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": {
+        "type": {
+          "format": "currency",
+          "enabled": true,
+          "max_chars": 15,
+          "min_chars": null,
+          "multiline": false,
+          "placeholder_en": "50000",
+          "placeholder_hi": null
+        },
+        "speak": {
+          "enabled": false,
+          "allow_edit": true,
+          "keep_audio": true,
+          "max_seconds": 120,
+          "live_transcript": true
+        },
+        "choose": {
+          "style": "radio",
+          "enabled": false,
+          "max_picks": null,
+          "min_picks": null,
+          "allow_other": false,
+          "other_max_chars": 200
+        },
+        "primary": "type"
+      }
     },
     {
       "key": "lease_years",
-      "type": "single",
+      "kind": "standard",
       "help_en": null,
       "help_hi": null,
       "options": [
@@ -186,13 +301,37 @@ export const DEMO_CONFIG: FormConfig = {
       "label_hi": "आप कितने साल के लिए लीज़ चाहते हैं?",
       "required": true,
       "validation": {},
-      "allow_other": false,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": {
+        "type": {
+          "format": "any",
+          "enabled": false,
+          "max_chars": 300,
+          "min_chars": null,
+          "multiline": false,
+          "placeholder_en": null,
+          "placeholder_hi": null
+        },
+        "speak": {
+          "enabled": false,
+          "allow_edit": true,
+          "keep_audio": true,
+          "max_seconds": 120,
+          "live_transcript": true
+        },
+        "choose": {
+          "style": "radio",
+          "enabled": true,
+          "max_picks": null,
+          "min_picks": null,
+          "allow_other": false,
+          "other_max_chars": 200
+        },
+        "primary": "choose"
+      }
     },
     {
       "key": "investment",
-      "type": "currency",
+      "kind": "standard",
       "help_en": "Total amount in rupees",
       "help_hi": "कुल रकम रुपये में",
       "options": [],
@@ -214,13 +353,37 @@ export const DEMO_CONFIG: FormConfig = {
       "validation": {
         "min": 0
       },
-      "allow_other": false,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": {
+        "type": {
+          "format": "currency",
+          "enabled": true,
+          "max_chars": 15,
+          "min_chars": null,
+          "multiline": false,
+          "placeholder_en": "50000",
+          "placeholder_hi": null
+        },
+        "speak": {
+          "enabled": false,
+          "allow_edit": true,
+          "keep_audio": true,
+          "max_seconds": 120,
+          "live_transcript": true
+        },
+        "choose": {
+          "style": "radio",
+          "enabled": false,
+          "max_picks": null,
+          "min_picks": null,
+          "allow_other": false,
+          "other_max_chars": 200
+        },
+        "primary": "type"
+      }
     },
     {
       "key": "partner_role",
-      "type": "single",
+      "kind": "standard",
       "help_en": null,
       "help_hi": null,
       "options": [
@@ -248,13 +411,37 @@ export const DEMO_CONFIG: FormConfig = {
       "label_hi": "साझेदारी में आप क्या भूमिका चाहते हैं?",
       "required": true,
       "validation": {},
-      "allow_other": false,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": {
+        "type": {
+          "format": "any",
+          "enabled": false,
+          "max_chars": 300,
+          "min_chars": null,
+          "multiline": false,
+          "placeholder_en": null,
+          "placeholder_hi": null
+        },
+        "speak": {
+          "enabled": false,
+          "allow_edit": true,
+          "keep_audio": true,
+          "max_seconds": 120,
+          "live_transcript": true
+        },
+        "choose": {
+          "style": "radio",
+          "enabled": true,
+          "max_picks": null,
+          "min_picks": null,
+          "allow_other": false,
+          "other_max_chars": 200
+        },
+        "primary": "choose"
+      }
     },
     {
       "key": "experience",
-      "type": "yes_no",
+      "kind": "yes_no",
       "help_en": null,
       "help_hi": null,
       "options": [
@@ -274,13 +461,11 @@ export const DEMO_CONFIG: FormConfig = {
       "label_hi": "क्या आपने पहले कोई दुकान चलाई है?",
       "required": true,
       "validation": {},
-      "allow_other": false,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": null
     },
     {
       "key": "about_you",
-      "type": "voice",
+      "kind": "standard",
       "help_en": "Tap the mic and speak in Hindi or English, or type.",
       "help_hi": "माइक दबाकर हिंदी या अंग्रेज़ी में बोलिए, या लिखिए।",
       "options": [],
@@ -289,13 +474,37 @@ export const DEMO_CONFIG: FormConfig = {
       "label_hi": "अपनी योजना के बारे में बताइए",
       "required": false,
       "validation": {},
-      "allow_other": false,
-      "allow_voice": true,
-      "placeholder": null
+      "input_modes": {
+        "type": {
+          "format": "any",
+          "enabled": true,
+          "max_chars": 1000,
+          "min_chars": null,
+          "multiline": true,
+          "placeholder_en": null,
+          "placeholder_hi": null
+        },
+        "speak": {
+          "enabled": true,
+          "allow_edit": true,
+          "keep_audio": true,
+          "max_seconds": 120,
+          "live_transcript": true
+        },
+        "choose": {
+          "style": "radio",
+          "enabled": false,
+          "max_picks": null,
+          "min_picks": null,
+          "allow_other": false,
+          "other_max_chars": 200
+        },
+        "primary": "speak"
+      }
     },
     {
       "key": "contact",
-      "type": "contact",
+      "kind": "contact",
       "help_en": null,
       "help_hi": null,
       "options": [],
@@ -304,9 +513,7 @@ export const DEMO_CONFIG: FormConfig = {
       "label_hi": "हम आपसे कैसे संपर्क करें?",
       "required": true,
       "validation": {},
-      "allow_other": false,
-      "allow_voice": false,
-      "placeholder": null
+      "input_modes": null
     }
   ]
 } as FormConfig;

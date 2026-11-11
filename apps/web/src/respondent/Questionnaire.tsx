@@ -4,7 +4,8 @@ import { ERROR_TEXT, validateOne } from '@shared/answers.ts';
 import { type Lang, pick, t } from './i18n.ts';
 import { answersToSubmit, nextKey, prevKey, resolveCurrent, totalScreens, visibleQuestions } from './flow.ts';
 import { QuestionInput } from './inputs.tsx';
-import { ApiError, flushTrack, submit, type SubmitPayload, track } from './api.ts';
+import { ApiError, flushTrack, type PublicProperty, submit, type SubmitPayload, track } from './api.ts';
+import { BrandMark, LangToggle, TrustFooter } from './Trust.tsx';
 import { clearOutbox, clearProgress, type Progress, saveDone, saveOutbox, saveProgress } from './storage.ts';
 
 interface Props {
@@ -13,14 +14,14 @@ interface Props {
   initial: Progress;
   resumed: boolean;
   source: string;
-  propertyName: string;
+  property: PublicProperty;
   onLang: (l: Lang) => void;
   onDone: () => void;
   onQueued: () => void;
   onFormChanged: () => void;
 }
 
-export function Questionnaire({ slug, form, initial, resumed, source, propertyName, onLang, onDone, onQueued, onFormChanged }: Props) {
+export function Questionnaire({ slug, form, initial, resumed, source, property, onLang, onDone, onQueued, onFormChanged }: Props) {
   const config = form.config;
   const [p, setP] = useState<Progress>(() => ({ ...initial, current: resolveCurrent(config, initial.answers, initial.current) }));
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +113,7 @@ export function Questionnaire({ slug, form, initial, resumed, source, propertyNa
       duration_seconds: Math.round((Date.now() - p.started_at) / 1000),
       website: honeypot.current?.value ?? '',
     };
-    const contact = payload.answers[config.questions.find((x) => x.type === 'contact')?.key ?? 'contact']?.value as
+    const contact = payload.answers[config.questions.find((x) => x.kind === 'contact')?.key ?? 'contact']?.value as
       | { name: string; whatsapp_ok: boolean }
       | undefined;
     try {
@@ -153,26 +154,30 @@ export function Questionnaire({ slug, form, initial, resumed, source, propertyNa
   const total = Math.max(totalScreens(config, p.answers), index + 1);
   const pct = Math.round(((index + 1) / total) * 100);
 
+  const setLang = (l: Lang) => {
+    setP((s) => ({ ...s, lang: l }));
+    onLang(l);
+  };
+  const answered = !!p.answers[q.key] && Object.keys(p.answers[q.key]).length > 0;
+
   return (
-    <div className="mx-auto flex min-h-dvh max-w-lg flex-col px-4 pb-6 pt-4">
-      <header className="mb-4">
+    <div className="mx-auto flex min-h-dvh max-w-lg flex-col px-4 pb-4 pt-4">
+      <header className="mb-5">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-stone-500">{propertyName}</span>
-          <button type="button" className="rounded-full border border-stone-300 px-3 py-1 text-sm" onClick={() => { setP((s) => ({ ...s, lang: lang === 'en' ? 'hi' : 'en' })); onLang(lang === 'en' ? 'hi' : 'en'); }}>
-            {t(lang, 'language')}
-          </button>
+          <BrandMark property={property} />
+          <LangToggle lang={lang} onLang={setLang} />
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-stone-200" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${pct}%` }} />
+        <div className="h-1.5 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
         </div>
-        <p className="mt-1 text-xs text-stone-500">
+        <p className="mt-1.5 text-xs text-muted">
           {t(lang, 'step', { n: index + 1, t: total })}
           {index === 0 ? ` · ${t(lang, 'about2min')}` : ''}
         </p>
       </header>
 
       {showResumed && (
-        <div className="mb-3 flex items-center justify-between rounded-xl bg-brand-50 p-3 text-sm text-brand-800">
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-primary-soft p-3 text-sm text-ink">
           <span>{t(lang, 'resumed')}</span>
           <button type="button" className="font-semibold underline" onClick={() => setShowResumed(false)}>
             OK
@@ -194,12 +199,12 @@ export function Questionnaire({ slug, form, initial, resumed, source, propertyNa
           }}
           noValidate
         >
-          <h1 className="text-2xl font-semibold leading-snug" id="q-label">
+          <h1 className="text-2xl font-semibold leading-snug text-ink" id="q-label">
             {label}
           </h1>
-          {help && <p className="mt-1 text-stone-600">{help}</p>}
-          {!q.required && q.type !== 'contact' && <p className="mt-1 text-sm text-stone-400">{t(lang, 'optional')}</p>}
-          <div className="mt-5">
+          {help && <p className="mt-2 text-muted">{help}</p>}
+          {!q.required && q.kind !== 'contact' && <p className="mt-1 text-sm text-muted">{t(lang, 'optional')}</p>}
+          <div className="mt-6">
             <QuestionInput
               key={q.key}
               q={q}
@@ -207,10 +212,10 @@ export function Questionnaire({ slug, form, initial, resumed, source, propertyNa
               value={p.answers[q.key]}
               onChange={setAnswer}
               onPicked={() => {
-                // a regular option was tapped ("Other" never calls this: it needs typing first)
+                // a single-select option was tapped and there is nothing else to answer here
                 setTimeout(() => nextRef.current(), 200);
               }}
-              ctx={{ slug, responseId: p.response_id, formVersionId: form.id }}
+              ctx={{ slug, responseId: p.response_id, formVersionId: form.id, speechLang: property.default_speech_lang }}
               uploads={p.voice[q.key]?.uploads ?? 0}
               onUploaded={setUploaded}
               onBusy={setBusy}
@@ -219,22 +224,25 @@ export function Questionnaire({ slug, form, initial, resumed, source, propertyNa
           {/* honeypot: invisible to people, tempting to bots */}
           <input ref={honeypot} name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
           {error && (
-            <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-800">
+            <p role="alert" className="mt-4 rounded-xl border border-line bg-surface p-3 text-danger">
               {error}
             </p>
           )}
         </form>
       </main>
 
-      <footer className="sticky bottom-0 mt-6 flex gap-3 bg-stone-50/95 pb-[env(safe-area-inset-bottom)] pt-3 backdrop-blur">
-        {index > 0 && (
-          <button type="button" className="btn-secondary px-5 py-4 text-lg" onClick={back} disabled={submitting || busy}>
-            {t(lang, 'back')}
+      <footer className="sticky bottom-0 mt-6 bg-bg pb-[env(safe-area-inset-bottom)] pt-3">
+        <div className="flex gap-3">
+          {index > 0 && (
+            <button type="button" className="r-btn-secondary" onClick={back} disabled={submitting || busy}>
+              {t(lang, 'back')}
+            </button>
+          )}
+          <button type="button" className="r-btn-primary flex-1" onClick={next} disabled={submitting || busy}>
+            {submitting ? t(lang, 'sending') : isLast ? t(lang, 'send') : !q.required && !answered ? t(lang, 'skip') : t(lang, 'next')}
           </button>
-        )}
-        <button type="button" className="btn-primary flex-1 py-4 text-lg" onClick={next} disabled={submitting || busy}>
-          {submitting ? t(lang, 'sending') : isLast ? t(lang, 'send') : !q.required && !(q.key in p.answers) ? t(lang, 'skip') : t(lang, 'next')}
-        </button>
+        </div>
+        <TrustFooter property={property} lang={lang} />
       </footer>
     </div>
   );

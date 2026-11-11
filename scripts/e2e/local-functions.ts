@@ -11,12 +11,15 @@ import { makeHandler as transcribeNow } from '../../supabase/functions/transcrib
 import { makeHandler as worker } from '../../supabase/functions/transcribe-worker/handler.ts';
 import { makeHandler as notify } from '../../supabase/functions/notify/handler.ts';
 import { makeHandler as health } from '../../supabase/functions/health/handler.ts';
+import { makeHandler as adminInvite } from '../../supabase/functions/admin-invite/handler.ts';
 import { handleSupabase } from './mini-supabase.ts';
 
 const PORT = Number(Deno.env.get('PORT') ?? 54400);
 const sql = postgres(Deno.env.get('DATABASE_URL')!, { max: 5, onnotice: () => {} });
 const STORE = Deno.env.get('STORE_DIR') ?? (await Deno.makeTempDir());
 const sent: string[] = [];
+// test control: POST /__whisper {text, delayMs}
+const whisperCfg = { text: 'Main kirana dukaan kholna chahta hoon', delayMs: 300 };
 
 const sigCache = new Map<string, { names: string[]; types: string[]; setof: boolean }>();
 async function sig(fn: string) {
@@ -49,7 +52,7 @@ const db: Db = {
     }
   },
   async propertyBySlug(slug) {
-    const [r] = await sql`select id, slug, name, status, closed_message, default_lang from public.properties where slug = ${slug}`;
+    const [r] = await sql`select * from public.properties where slug = ${slug}`;
     return (r as never) ?? null;
   },
   async currentForm(pid) {
@@ -85,7 +88,19 @@ const db: Db = {
   async isAdminToken() {
     return false;
   },
+  async ownerFromToken(jwt) {
+    // test tokens are unsigned JWTs issued by mini-supabase.ts
+    try {
+      const sub = JSON.parse(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
+      const [r] = await sql`select user_id from public.admins where user_id = ${sub} and role = 'owner'`;
+      return r ? String(r.user_id) : null;
+    } catch {
+      return null;
+    }
+  },
 };
+
+const invited: string[] = [];
 
 async function deleteFile(p: string) {
   try {
@@ -113,11 +128,18 @@ const storage: Storage = {
 
 const deps: Deps = {
   db,
+  auth: {
+    async inviteUser(email) {
+      const [u] = await sql`insert into auth.users (email) values (${email}) on conflict (email) do update set email = excluded.email returning id, (xmax = 0) as inserted`;
+      invited.push(email);
+      return { id: String(u.id), invited: !!u.inserted };
+    },
+  },
   storage,
   speech: {
     transcribe: async () => {
-      await new Promise((r) => setTimeout(r, 300));
-      return { text: 'Main kirana dukaan kholna chahta hoon', language: 'hindi', duration: 3 };
+      await new Promise((r) => setTimeout(r, whisperCfg.delayMs));
+      return { text: whisperCfg.text, language: 'hindi', duration: 3 };
     },
     translateToEnglish: async (t) => `EN: ${t}`,
     listModels: async () => ['whisper-large-v3', 'llama-3.1-8b-instant'],
@@ -137,6 +159,7 @@ const handlers: Record<string, (r: Request) => Promise<Response>> = {
   'transcribe-worker': worker(deps),
   notify: notify(deps),
   health: health(deps),
+  'admin-invite': adminInvite(deps),
 };
 
 Deno.serve({ port: PORT, onListen: () => console.log(`local functions on :${PORT}`) }, async (req) => {
@@ -151,6 +174,11 @@ Deno.serve({ port: PORT, onListen: () => console.log(`local functions on :${PORT
     return new Response('{"Key":"ok"}', { headers: { ...cors, 'content-type': 'application/json' } });
   }
   if (url.pathname === '/__sent') return Response.json(sent, { headers: cors });
+  if (url.pathname === '/__whisper' && req.method === 'POST') {
+    Object.assign(whisperCfg, await req.json());
+    return Response.json(whisperCfg, { headers: cors });
+  }
+  if (url.pathname === '/__invited') return Response.json(invited, { headers: cors });
   const sb = await handleSupabase(req, sql, STORE, `http://localhost:${PORT}`);
   if (sb) return sb;
   const name = url.pathname.replace(/^\/functions\/v1\//, '');

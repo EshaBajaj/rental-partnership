@@ -39,6 +39,31 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 // ---------------------------------------------------------------- modal / confirm
+/** Side sheet: slides over the right side on desktop, full screen on phones. Escape closes it. */
+export function Sheet({ title, onClose, children, actions }: { title: string; onClose: () => void; children: ReactNode; actions?: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('[role="dialog"][aria-modal="true"]') && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-30 flex justify-end bg-black/30" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <section ref={ref} tabIndex={-1} aria-label={title} className="flex h-full w-full flex-col bg-stone-50 shadow-2xl outline-none lg:max-w-6xl">
+        <header className="flex items-center gap-3 border-b border-stone-200 bg-white px-4 py-3">
+          <button className="btn-ghost -ml-2 px-2 py-1" onClick={onClose} aria-label="Close editor">
+            ←
+          </button>
+          <h2 className="min-w-0 flex-1 truncate font-semibold">{title}</h2>
+          {actions}
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      </section>
+    </div>
+  );
+}
+
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {

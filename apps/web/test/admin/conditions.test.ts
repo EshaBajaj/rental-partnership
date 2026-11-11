@@ -7,9 +7,13 @@ import { mergeSettings } from '../../src/admin/profiles/settings.ts';
 import { diffRows } from '../../src/admin/audit/diff.ts';
 import { eventText } from '../../src/admin/lead/events.ts';
 import type { ShowIf } from '@shared/types.ts';
+import { defaultModes } from '@shared/input-modes.ts';
 
-const biz: RefQuestion = { key: 'biz', type: 'single', label_en: 'Business', allow_other: true, options: [{ value: 'grocery', label_en: 'Grocery' }, { value: 'salon', label_en: 'Salon', archived: true }] };
-const budget: RefQuestion = { key: 'budget', type: 'currency', label_en: 'Budget', allow_other: false, options: [] };
+const chooseOther = { ...defaultModes(), choose: { ...defaultModes().choose, allow_other: true } };
+const currency = { ...defaultModes(), primary: 'type' as const, choose: { ...defaultModes().choose, enabled: false }, type: { ...defaultModes().type, enabled: true, format: 'currency' as const } };
+
+const biz: RefQuestion = { key: 'biz', kind: 'standard', input_modes: chooseOther, label_en: 'Business', options: [{ value: 'grocery', label_en: 'Grocery' }, { value: 'salon', label_en: 'Salon', archived: true }] };
+const budget: RefQuestion = { key: 'budget', kind: 'standard', input_modes: currency, label_en: 'Budget', options: [] };
 
 describe('condition values', () => {
   it('defaults per operator and type', () => {

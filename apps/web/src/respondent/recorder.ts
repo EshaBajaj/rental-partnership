@@ -33,7 +33,7 @@ export interface Recording {
 export async function startRecording(maxSeconds: number, onTick: (s: number) => void): Promise<{ stop: () => Promise<Recording>; cancel: () => void }> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   const mimePick = pickRecorderMime((m) => MediaRecorder.isTypeSupported(m));
-  const rec = mimePick ? new MediaRecorder(stream, { mimeType: mimePick, audioBitsPerSecond: 32000 }) : new MediaRecorder(stream);
+  const rec = mimePick ? new MediaRecorder(stream, { mimeType: mimePick, audioBitsPerSecond: 24000 }) : new MediaRecorder(stream);
   const chunks: Blob[] = [];
   const started = performance.now();
   rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);

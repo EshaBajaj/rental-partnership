@@ -37,7 +37,7 @@ export function answersToSubmit(config: FormConfig, answers: RawAnswers): RawAns
   for (const q of visibleQuestions(config, answers)) {
     const a: RawAnswer | undefined = answers[q.key];
     if (!a) continue;
-    if (!isAnswered(rawEngineValue(a)) && q.type !== 'contact') continue;
+    if (!isAnswered(rawEngineValue(a)) && q.kind !== 'contact') continue;
     out[q.key] = a;
   }
   return out;
@@ -61,15 +61,10 @@ export function amountWords(n: number, lang: 'en' | 'hi'): string {
 const inr = new Intl.NumberFormat('en-IN');
 export const formatInr = (n: number) => `₹${inr.format(n)}`;
 
-/** Parse "45,000" / "45000" / "4.5" → number|null (digits only, optional decimal). */
-export function parseAmount(s: string): number | null {
-  const c = s.replace(/[,\s₹]/g, '');
-  if (!/^\d+(\.\d+)?$/.test(c)) return null;
-  return Number(c);
-}
+export { parseNumber as parseAmount } from '@shared/answers.ts';
 
 /** Screens to show in the progress bar: before the path is chosen, assume the longest path. */
 export function totalScreens(config: FormConfig, answers: RawAnswers): number {
-  if (answers[PATH_KEY]?.value) return visibleQuestions(config, answers).length;
-  return Math.max(...PATH_VALUES.map((p) => visibleQuestions(config, { ...answers, [PATH_KEY]: { value: p } }).length));
+  if (answers[PATH_KEY]?.choose?.length) return visibleQuestions(config, answers).length;
+  return Math.max(...PATH_VALUES.map((p) => visibleQuestions(config, { ...answers, [PATH_KEY]: { choose: [p] } }).length));
 }

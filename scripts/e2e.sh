@@ -49,7 +49,9 @@ done
 echo "✓ local functions + web preview up"
 
 APP_URL="http://localhost:4173" FN_URL="http://localhost:54400" DATABASE_URL="$E2E_URL" SHOTS_DIR="${SHOTS_DIR:-}" \
-  node "$ROOT/scripts/e2e/respondent.e2e.mjs"
+  E2E_BROWSERS="${E2E_BROWSERS:-chromium}" node "$ROOT/scripts/e2e/respondent.e2e.mjs"
 
-APP_URL="http://localhost:4173" DATABASE_URL="$E2E_URL" SHOTS_DIR="${SHOTS_DIR:-}" \
-  node "$ROOT/scripts/e2e/admin.e2e.mjs"
+if [[ "${E2E_SKIP_ADMIN:-}" != "1" ]]; then
+  APP_URL="http://localhost:4173" FN_URL="http://localhost:54400" DATABASE_URL="$E2E_URL" SHOTS_DIR="${SHOTS_DIR:-}" \
+    node "$ROOT/scripts/e2e/admin.e2e.mjs"
+fi

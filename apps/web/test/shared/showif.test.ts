@@ -64,7 +64,7 @@ describe('computeVisibility', () => {
   });
   it('chained hiding: answer to a hidden question cannot reveal later ones', () => {
     const c = {
-      schema: 1 as const,
+      schema: 2 as const,
       questions: [
         { ...cfg.questions[0] },
         { ...cfg.questions[1], key: 'x', show_if: { all: [{ q: 'path', op: 'eq' as const, v: 'partner' }] } },

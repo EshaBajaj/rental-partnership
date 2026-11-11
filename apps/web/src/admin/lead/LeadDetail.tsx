@@ -1,4 +1,5 @@
 // Lead detail: answers, voice notes, full explanation of the ranking, lead management, timeline.
+import { primaryText, voiceVersions, wordDiff } from './voiceCompare.ts';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -225,7 +226,7 @@ function VoiceNotes({ lead }: { lead: ResponseRow }) {
   const notes = useQuery({
     queryKey: qk.voice(lead.id),
     queryFn: async () => must(await supabase.from('voice_notes').select('*').eq('response_id', lead.id).order('created_at')) as VoiceNoteRow[],
-    refetchInterval: (q) => ((q.state.data ?? []).some((n) => !n.transcript_machine && n.status !== 'failed' && !n.audio_deleted_at) ? 15_000 : false),
+    refetchInterval: (q) => ((q.state.data ?? []).some((n) => !n.transcript_machine && n.status !== 'failed' && !n.audio_deleted_at && !!n.storage_path && !n.audio_missing) ? 15_000 : false),
   });
   if (!notes.data?.length) return null;
   return (
@@ -243,23 +244,37 @@ function VoiceNotes({ lead }: { lead: ResponseRow }) {
 function VoiceNote({ note, label }: { note: VoiceNoteRow; label: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [compare, setCompare] = useState(false);
+  const noRecording = note.audio_missing || !note.storage_path;
   async function load() {
+    if (!note.storage_path) return;
     setErr(null);
     const { data, error } = await supabase.storage.from('voice-notes').createSignedUrl(note.storage_path, 3600);
     if (error) setErr(error.message);
     else setUrl(data.signedUrl);
   }
-  const edited = note.edited_by_respondent;
+  const main = primaryText(note);
+  const versions = voiceVersions(note);
+  const base = note.transcript_live || note.transcript_machine || '';
   return (
     <div className="rounded-xl border border-stone-200 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{label}</span>
-        <Badge>{Math.round(Number(note.duration_seconds))}s</Badge>
+        {!noRecording && <Badge>{Math.round(Number(note.duration_seconds))}s</Badge>}
         {note.language && <Badge>{note.language}</Badge>}
-        {edited && <Badge tone="amber">edited by respondent</Badge>}
+        {note.edited_by_respondent && <Badge tone="amber">Edited by respondent</Badge>}
         <Badge tone={note.status === 'failed' ? 'red' : 'stone'}>{note.status}</Badge>
       </div>
-      {note.audio_deleted_at ? (
+      <p className="mt-2 whitespace-pre-line text-base text-stone-900">{main ?? <span className="text-stone-500">{note.status === 'failed' ? 'Transcription failed.' : 'Transcribing… (checks every 15 s)'}</span>}</p>
+      {note.transcript_en && (
+        <p className="mt-1 text-stone-700">
+          <span className="text-xs text-stone-500">English: </span>
+          {note.transcript_en}
+        </p>
+      )}
+      {noRecording ? (
+        <p className="mt-2 text-stone-500">No recording — live transcript only.</p>
+      ) : note.audio_deleted_at ? (
         <p className="mt-2 text-stone-500">Audio deleted after the retention period ({format(new Date(note.audio_deleted_at), 'd MMM yyyy')}). Transcripts are kept.</p>
       ) : url ? (
         <audio className="mt-2 w-full" controls src={url} preload="none">
@@ -271,35 +286,40 @@ function VoiceNote({ note, label }: { note: VoiceNoteRow; label: string }) {
         </button>
       )}
       {err && <p className="text-red-700">{err}</p>}
-      <div className="mt-2 space-y-2">
-        {note.transcript_final && (
-          <p>
-            <span className="text-xs text-stone-500">Sent by respondent:</span>
-            <br />
-            {note.transcript_final}
-          </p>
-        )}
-        {(edited || !note.transcript_final) && (
-          <p className="text-stone-600">
-            <span className="text-xs text-stone-500">Machine transcript:</span>
-            <br />
-            {note.transcript_machine ?? (note.status === 'failed' ? 'Transcription failed.' : 'Transcribing… (checks every 15 s)')}
-          </p>
-        )}
-        {note.transcript_en && (
-          <p className="text-stone-700">
-            <span className="text-xs text-stone-500">English:</span>
-            <br />
-            {note.transcript_en}
-          </p>
-        )}
-        {note.last_error && note.status !== 'transcribed' && note.status !== 'submitted' && <p className="text-xs text-red-700">Last error: {note.last_error}</p>}
-        {note.last_error && note.status === 'submitted' && !note.transcript_machine && (
-          <p className="text-xs text-amber-700">
-            Retrying (attempt {note.transcribe_attempts}): {note.last_error}
-          </p>
-        )}
-      </div>
+      <button className="mt-2 text-xs text-stone-600 underline" aria-expanded={compare} onClick={() => setCompare((c) => !c)}>
+        {compare ? 'Hide comparison' : 'Compare live / Whisper / sent'}
+      </button>
+      {compare && (
+        <div className="mt-2 grid gap-2 md:grid-cols-3">
+          {versions.map((v) => (
+            <div key={v.key} className="rounded-lg bg-stone-50 p-2">
+              <p className="text-xs font-medium text-stone-500">{v.label}</p>
+              {v.text ? (
+                <p className="mt-1 whitespace-pre-line">
+                  {v.key === 'sent' && base && base !== v.text
+                    ? wordDiff(base, v.text).map((d, i) =>
+                        d.kind === 'removed' ? null : (
+                          <span key={i} className={d.kind === 'added' ? 'rounded bg-amber-100' : ''}>
+                            {d.text}{' '}
+                          </span>
+                        ),
+                      )
+                    : v.text}
+                </p>
+              ) : (
+                <p className="mt-1 text-stone-400">{v.missing}</p>
+              )}
+            </div>
+          ))}
+          {note.edited_by_respondent && <p className="text-xs text-stone-500 md:col-span-3">Highlighted words in “Sent” were changed or added by the respondent.</p>}
+        </div>
+      )}
+      {note.last_error && note.status !== 'transcribed' && note.status !== 'submitted' && <p className="mt-1 text-xs text-red-700">Last error: {note.last_error}</p>}
+      {note.last_error && note.status === 'submitted' && !note.transcript_machine && !noRecording && (
+        <p className="mt-1 text-xs text-amber-700">
+          Retrying (attempt {note.transcribe_attempts}): {note.last_error}
+        </p>
+      )}
     </div>
   );
 }

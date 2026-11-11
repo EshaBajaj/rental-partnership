@@ -1,11 +1,12 @@
 // Admin shell: auth guard, admin check, property context, layout and routes.
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Session } from '@supabase/supabase-js';
 import { must, qk, supabase } from './api.ts';
 import { Ctx, useAdmin } from './context.tsx';
 import { Login } from './Login.tsx';
+import { ResetPassword } from './ResetPassword.tsx';
 import type { AdminRow, PropertyRow } from './types.ts';
 import { ConfirmProvider, ErrorBoundary, ErrorBox, Spinner, ToastProvider } from './ui.tsx';
 import { Board } from './board/Board.tsx';
@@ -16,8 +17,12 @@ const Profiles = lazy(() => import('./profiles/Profiles.tsx'));
 const Settings = lazy(() => import('./settings/Settings.tsx'));
 const Funnel = lazy(() => import('./funnel/Funnel.tsx'));
 const Audit = lazy(() => import('./audit/Audit.tsx'));
+const Admins = lazy(() => import('./admins/Admins.tsx'));
 
 const PROP_KEY = 'sls.admin.property';
+
+/** Invite / recovery links land with #…type=invite|recovery; remember it before supabase-js consumes the hash. */
+const ARRIVED_TO_SET_PASSWORD = typeof location !== 'undefined' && /type=(invite|recovery)/.test(location.hash);
 
 export default function AdminApp() {
   return (
@@ -32,16 +37,20 @@ export default function AdminApp() {
 function AuthGate() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const qc = useQueryClient();
+  const nav = useNavigate();
   useEffect(() => {
+    if (ARRIVED_TO_SET_PASSWORD && location.pathname !== '/admin/reset') nav('/admin/reset', { replace: true });
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data } = supabase.auth.onAuthStateChange((e, s) => {
       setSession(s);
+      if (e === 'PASSWORD_RECOVERY') nav('/admin/reset', { replace: true });
       if (!s) qc.clear();
     });
     return () => data.subscription.unsubscribe();
-  }, [qc]);
+  }, [qc, nav]);
   const loc = useLocation();
   if (session === undefined) return <Spinner />;
+  if (loc.pathname === '/admin/reset') return <ResetPassword session={session} />;
   if (!session) return loc.pathname === '/admin/login' ? <Login /> : <Navigate to="/admin/login" replace />;
   if (loc.pathname === '/admin/login') return <Navigate to="/admin" replace />;
   return <AdminGate session={session} />;
@@ -72,10 +81,8 @@ function AdminGate({ session }: { session: Session }) {
     return (
       <div className="flex min-h-dvh items-center justify-center p-4">
         <div className="card max-w-sm space-y-3 p-6 text-center">
-          <h1 className="text-lg font-semibold">Your account is not an admin</h1>
-          <p className="text-sm text-stone-600">
-            You are signed in as {session.user.email}. Ask the owner to add this email in Settings → Admins.
-          </p>
+          <h1 className="text-lg font-semibold">You're signed in but not an admin — ask an owner to add you</h1>
+          <p className="text-sm text-stone-600">Signed in as {session.user.email}.</p>
           <button className="btn-secondary" onClick={() => supabase.auth.signOut()}>
             Sign out
           </button>
@@ -108,12 +115,14 @@ const NAV = [
   { to: '/admin/funnel', label: 'Funnel' },
   { to: '/admin/settings', label: 'Settings' },
   { to: '/admin/audit', label: 'Audit' },
+  { to: '/admin/admins', label: 'Admins', ownerOnly: true },
 ];
 
 function Layout() {
   const { me, property, properties, setPropertyId } = useAdmin();
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
+  const nav = NAV.filter((n) => !n.ownerOnly || me.role === 'owner');
   useEffect(() => setMenu(false), [loc.pathname]);
   useEffect(() => {
     document.title = `Admin · ${property.name}`;
@@ -139,7 +148,7 @@ function Layout() {
           )}
           {property.status === 'closed' && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800">Form closed</span>}
           <nav className="ml-4 hidden gap-1 md:flex" aria-label="Main">
-            {NAV.map((n) => (
+            {nav.map((n) => (
               <NavItem key={n.to} {...n} />
             ))}
           </nav>
@@ -154,7 +163,7 @@ function Layout() {
         </div>
         {menu && (
           <nav className="flex flex-col border-t border-stone-200 px-2 py-2 md:hidden" aria-label="Main mobile">
-            {NAV.map((n) => (
+            {nav.map((n) => (
               <NavItem key={n.to} {...n} />
             ))}
           </nav>
@@ -171,6 +180,7 @@ function Layout() {
               <Route path="funnel" element={<Funnel />} />
               <Route path="settings" element={<Settings />} />
               <Route path="audit" element={<Audit />} />
+              <Route path="admins" element={<Admins />} />
               <Route path="*" element={<Navigate to="/admin" replace />} />
             </Routes>
           </Suspense>
@@ -180,7 +190,7 @@ function Layout() {
   );
 }
 
-function NavItem({ to, label, end }: { to: string; label: string; end?: boolean }) {
+function NavItem({ to, label, end }: { to: string; label: string; end?: boolean; ownerOnly?: boolean }) {
   return (
     <NavLink
       to={to}

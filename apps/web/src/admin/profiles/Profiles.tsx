@@ -1,4 +1,5 @@
 // Ideal Profiles builder: draft editing with live counters, simulate, publish, roll back.
+import { isSingleSelect } from '@shared/input-modes.ts';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -12,7 +13,7 @@ import { Badge, Empty, ErrorBox, SaveIndicator, Spinner, TIER_LABEL, useConfirm,
 import { useAutosave } from '../form/autosave.ts';
 import { ConditionRow } from '../form/ConditionEditor.tsx';
 import { describeCondition, newCondition, type RefQuestion } from '../form/conditionValue.ts';
-import { toRef } from '../form/FormBuilder.tsx';
+import { toRef } from '../form/draft.ts';
 import { mergeSettings } from './settings.ts';
 
 const IMPORTANCE_LABEL: Record<Importance, string> = { must: 'Must have', important: 'Important', nice: 'Nice to have' };
@@ -41,7 +42,7 @@ export default function Profiles() {
   const draft = sets.data!.find((s) => s.status === 'draft') ?? null;
   const current = sets.data!.find((s) => s.is_current) ?? null;
   const published = sets.data!.filter((s) => s.status === 'published');
-  const qrows = questions.data!.filter((q) => q.type !== 'contact');
+  const qrows = questions.data!.filter((q) => q.kind !== 'contact');
   const refs = qrows.filter((q) => !q.archived_at).map(toRef).concat(qrows.filter((q) => q.archived_at).map(toRef));
 
   const invalidate = () => {
@@ -648,7 +649,7 @@ function SettingsEditor({
             </label>
             <select id="timing-q" className="input" value={s.intent.timing_key} onChange={(e) => set((x) => (x.intent.timing_key = e.target.value))}>
               {qrows
-                .filter((q) => q.type === 'single' || q.type === 'dropdown')
+                .filter((q) => q.kind === 'standard' && !!q.input_modes?.choose.enabled && isSingleSelect(q.input_modes.choose))
                 .map((q) => (
                   <option key={q.key} value={q.key}>
                     {q.label_en}

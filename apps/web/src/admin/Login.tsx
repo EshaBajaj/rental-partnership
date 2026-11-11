@@ -23,7 +23,7 @@ export function Login() {
       setError('Enter your email first, then tap “Forgot password”.');
       return;
     }
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${location.origin}/admin/settings` });
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${location.origin}/admin/reset` });
     if (error) setError(errMsg(error));
     else setResetSent(true);
   }
@@ -52,7 +52,11 @@ export function Login() {
             {error}
           </p>
         )}
-        {resetSent && <p className="text-sm text-emerald-700">Check your email for a reset link.</p>}
+        {resetSent && (
+          <p role="status" className="text-sm text-emerald-700">
+            If {email.trim()} has an account, we sent a link to set a new password. It works once and expires soon — check spam too.
+          </p>
+        )}
         <button className="btn-primary w-full" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
