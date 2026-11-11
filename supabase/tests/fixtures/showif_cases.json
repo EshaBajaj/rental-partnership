@@ -1,0 +1,591 @@
+[
+ {
+  "name": "null always shown",
+  "expr": null,
+  "vals": {},
+  "expected": true
+ },
+ {
+  "name": "eq string",
+  "expr": {
+   "all": [
+    {
+     "q": "p",
+     "op": "eq",
+     "v": "rent"
+    }
+   ]
+  },
+  "vals": {
+   "p": "rent"
+  },
+  "expected": true
+ },
+ {
+  "name": "eq string false",
+  "expr": {
+   "all": [
+    {
+     "q": "p",
+     "op": "eq",
+     "v": "rent"
+    }
+   ]
+  },
+  "vals": {
+   "p": "partner"
+  },
+  "expected": false
+ },
+ {
+  "name": "eq unanswered",
+  "expr": {
+   "all": [
+    {
+     "q": "p",
+     "op": "eq",
+     "v": "rent"
+    }
+   ]
+  },
+  "vals": {},
+  "expected": false
+ },
+ {
+  "name": "eq number",
+  "expr": {
+   "all": [
+    {
+     "q": "n",
+     "op": "eq",
+     "v": 5
+    }
+   ]
+  },
+  "vals": {
+   "n": 5
+  },
+  "expected": true
+ },
+ {
+  "name": "eq number vs string",
+  "expr": {
+   "all": [
+    {
+     "q": "n",
+     "op": "eq",
+     "v": "5"
+    }
+   ]
+  },
+  "vals": {
+   "n": 5
+  },
+  "expected": true
+ },
+ {
+  "name": "neq",
+  "expr": {
+   "all": [
+    {
+     "q": "p",
+     "op": "neq",
+     "v": "rent"
+    }
+   ]
+  },
+  "vals": {
+   "p": "x"
+  },
+  "expected": true
+ },
+ {
+  "name": "neq unanswered is false",
+  "expr": {
+   "all": [
+    {
+     "q": "p",
+     "op": "neq",
+     "v": "rent"
+    }
+   ]
+  },
+  "vals": {},
+  "expected": false
+ },
+ {
+  "name": "in",
+  "expr": {
+   "all": [
+    {
+     "q": "p",
+     "op": "in",
+     "v": [
+      "a",
+      "b"
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "p": "b"
+  },
+  "expected": true
+ },
+ {
+  "name": "not_in",
+  "expr": {
+   "all": [
+    {
+     "q": "p",
+     "op": "not_in",
+     "v": [
+      "a",
+      "b"
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "p": "c"
+  },
+  "expected": true
+ },
+ {
+  "name": "not_in unanswered",
+  "expr": {
+   "all": [
+    {
+     "q": "p",
+     "op": "not_in",
+     "v": [
+      "a",
+      "b"
+     ]
+    }
+   ]
+  },
+  "vals": {},
+  "expected": false
+ },
+ {
+  "name": "gte equal",
+  "expr": {
+   "all": [
+    {
+     "q": "n",
+     "op": "gte",
+     "v": 40000
+    }
+   ]
+  },
+  "vals": {
+   "n": 40000
+  },
+  "expected": true
+ },
+ {
+  "name": "gte decimal",
+  "expr": {
+   "all": [
+    {
+     "q": "n",
+     "op": "gte",
+     "v": 40000
+    }
+   ]
+  },
+  "vals": {
+   "n": 39999.5
+  },
+  "expected": false
+ },
+ {
+  "name": "lte numeric string",
+  "expr": {
+   "all": [
+    {
+     "q": "n",
+     "op": "lte",
+     "v": 10
+    }
+   ]
+  },
+  "vals": {
+   "n": "9"
+  },
+  "expected": true
+ },
+ {
+  "name": "gte dates",
+  "expr": {
+   "all": [
+    {
+     "q": "d",
+     "op": "gte",
+     "v": "2026-01-15"
+    }
+   ]
+  },
+  "vals": {
+   "d": "2026-02-01"
+  },
+  "expected": true
+ },
+ {
+  "name": "between inclusive lo",
+  "expr": {
+   "all": [
+    {
+     "q": "n",
+     "op": "between",
+     "v": [
+      1,
+      5
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "n": 1
+  },
+  "expected": true
+ },
+ {
+  "name": "between above",
+  "expr": {
+   "all": [
+    {
+     "q": "n",
+     "op": "between",
+     "v": [
+      1,
+      5
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "n": 5.01
+  },
+  "expected": false
+ },
+ {
+  "name": "contains_any",
+  "expr": {
+   "all": [
+    {
+     "q": "m",
+     "op": "contains_any",
+     "v": [
+      "a",
+      "z"
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "m": [
+    "a",
+    "b"
+   ]
+  },
+  "expected": true
+ },
+ {
+  "name": "contains_all",
+  "expr": {
+   "all": [
+    {
+     "q": "m",
+     "op": "contains_all",
+     "v": [
+      "a",
+      "b"
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "m": [
+    "b",
+    "a",
+    "c"
+   ]
+  },
+  "expected": true
+ },
+ {
+  "name": "contains_all false",
+  "expr": {
+   "all": [
+    {
+     "q": "m",
+     "op": "contains_all",
+     "v": [
+      "a",
+      "d"
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "m": [
+    "b",
+    "a"
+   ]
+  },
+  "expected": false
+ },
+ {
+  "name": "eq on array = includes",
+  "expr": {
+   "all": [
+    {
+     "q": "m",
+     "op": "eq",
+     "v": "a"
+    }
+   ]
+  },
+  "vals": {
+   "m": [
+    "a",
+    "b"
+   ]
+  },
+  "expected": true
+ },
+ {
+  "name": "neq on array",
+  "expr": {
+   "all": [
+    {
+     "q": "m",
+     "op": "neq",
+     "v": "a"
+    }
+   ]
+  },
+  "vals": {
+   "m": [
+    "a",
+    "b"
+   ]
+  },
+  "expected": false
+ },
+ {
+  "name": "in on array",
+  "expr": {
+   "all": [
+    {
+     "q": "m",
+     "op": "in",
+     "v": [
+      "z",
+      "b"
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "m": [
+    "a",
+    "b"
+   ]
+  },
+  "expected": true
+ },
+ {
+  "name": "gte on array false",
+  "expr": {
+   "all": [
+    {
+     "q": "m",
+     "op": "gte",
+     "v": 1
+    }
+   ]
+  },
+  "vals": {
+   "m": [
+    "5"
+   ]
+  },
+  "expected": false
+ },
+ {
+  "name": "whitespace not answered",
+  "expr": {
+   "all": [
+    {
+     "q": "t",
+     "op": "answered"
+    }
+   ]
+  },
+  "vals": {
+   "t": "  "
+  },
+  "expected": false
+ },
+ {
+  "name": "empty array not answered",
+  "expr": {
+   "all": [
+    {
+     "q": "t",
+     "op": "not_answered"
+    }
+   ]
+  },
+  "vals": {
+   "t": []
+  },
+  "expected": true
+ },
+ {
+  "name": "zero is answered",
+  "expr": {
+   "all": [
+    {
+     "q": "t",
+     "op": "answered"
+    }
+   ]
+  },
+  "vals": {
+   "t": 0
+  },
+  "expected": true
+ },
+ {
+  "name": "empty any",
+  "expr": {
+   "any": []
+  },
+  "vals": {},
+  "expected": true
+ },
+ {
+  "name": "empty all",
+  "expr": {
+   "all": []
+  },
+  "vals": {},
+  "expected": true
+ },
+ {
+  "name": "any",
+  "expr": {
+   "any": [
+    {
+     "q": "a",
+     "op": "eq",
+     "v": 1
+    },
+    {
+     "q": "b",
+     "op": "eq",
+     "v": 2
+    }
+   ]
+  },
+  "vals": {
+   "b": 2
+  },
+  "expected": true
+ },
+ {
+  "name": "nested",
+  "expr": {
+   "all": [
+    {
+     "q": "a",
+     "op": "eq",
+     "v": 1
+    },
+    {
+     "any": [
+      {
+       "q": "b",
+       "op": "eq",
+       "v": "x"
+      },
+      {
+       "q": "c",
+       "op": "answered"
+      }
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "a": 1,
+   "c": "y"
+  },
+  "expected": true
+ },
+ {
+  "name": "nested false",
+  "expr": {
+   "all": [
+    {
+     "q": "a",
+     "op": "eq",
+     "v": 1
+    },
+    {
+     "any": [
+      {
+       "q": "b",
+       "op": "eq",
+       "v": "x"
+      },
+      {
+       "q": "c",
+       "op": "answered"
+      }
+     ]
+    }
+   ]
+  },
+  "vals": {
+   "a": 1
+  },
+  "expected": false
+ },
+ {
+  "name": "booleans",
+  "expr": {
+   "all": [
+    {
+     "q": "a",
+     "op": "eq",
+     "v": true
+    }
+   ]
+  },
+  "vals": {
+   "a": true
+  },
+  "expected": true
+ },
+ {
+  "name": "case sensitive",
+  "expr": {
+   "all": [
+    {
+     "q": "a",
+     "op": "eq",
+     "v": "B"
+    }
+   ]
+  },
+  "vals": {
+   "a": "b"
+  },
+  "expected": false
+ }
+]
