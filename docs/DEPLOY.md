@@ -75,22 +75,40 @@ Push to `main` (CI must pass) or run **Actions → Deploy → Run workflow**. Th
 1. `supabase db push --include-seed` — applies migrations; the seed creates the first property
    (`main-road-shop`) with a starter questionnaire and two Ideal Profiles (it does nothing if the property exists);
 2. stores `project_url` and `cron_secret` in **Supabase Vault** (pg_cron uses them to call the worker every minute);
-3. sets the function secrets and deploys all 8 Edge Functions (`--no-verify-jwt`; each function does its own checks);
+3. sets the function secrets and deploys all 9 Edge Functions (`--no-verify-jwt`; each function does its own checks);
 4. builds the web app (fails if the respondent bundle exceeds 150 KB gzipped) and uploads it to Cloudflare Pages;
 5. smoke-tests `form` and `health?deep=1`.
 
-## 5. Create the owner account
+## 5. Admin access (bootstrap the first owner)
 
-1. Supabase → Authentication → Users → **Add user → Create new user**: your email, a strong password,
-   tick **Auto Confirm User**.
-2. SQL editor:
+Respondents never sign in. Only people who manage leads sign in, at `<APP_URL>/admin`.
+
+1. **Create each admin's login.** Supabase → Authentication → Users → **Add user → Create new user**:
+   email + a strong password, tick **Auto Confirm User**. Repeat for every admin.
+2. **Make them admins** (SQL Editor). Emails are matched case-insensitively, and re-running is safe:
 
    ```sql
    insert into public.admins (user_id, email, role)
-   select id, email, 'owner' from auth.users where email = 'you@example.com';
+   select id, lower(email), 'owner'
+   from auth.users
+   where lower(email) in ('owner@example.com', 'partner@example.com')
+   on conflict (user_id) do nothing;
    ```
 
-3. Open `APP_URL/admin`, sign in. Add staff later: create their user the same way, then **Settings → Admins → Add** with their email.
+3. **Verify.** You should see one row per admin:
+
+   ```sql
+   select a.email, a.role, a.created_at from public.admins a order by a.created_at;
+   ```
+
+   No rows? The emails don't match the users in step 1. Check spelling, e.g. `gmail.com` vs `gmal.com`.
+4. **Disable public sign-ups.** Authentication → Sign In / Providers → Email → turn **off** "Allow new users to sign up".
+5. **Set the Site URL.** Authentication → URL Configuration: Site URL = `APP_URL`. Add these redirect URLs:
+   `APP_URL/admin/login` (invites) and `APP_URL/admin/reset` (password reset / set password).
+
+After that, owners add everyone else from **Admins** in the admin board. "Invite" emails a link to
+set a password; existing accounts are simply added. The database always keeps at least one owner:
+the last owner cannot be removed or demoted. Forgot your password? Use **Forgot password** on the sign-in page.
 
 ## 6. Go live checklist
 
@@ -101,7 +119,24 @@ Push to `main` (CI must pass) or run **Actions → Deploy → Run workflow**. Th
 - [ ] Within 10 minutes `pg_cron` and `worker` checks are green (heartbeat every 5 min, worker every minute).
 - [ ] Edit the questionnaire and the Ideal Profiles for your shop, **Publish** both.
 - [ ] Fill the form yourself from a phone (try a voice answer). The lead appears live on the board.
+- [ ] **Settings → Brand & trust**: business name, the phone you will call from, WhatsApp number, address,
+      welcome text, logo and shop photo. These appear on the respondent pages and the privacy page.
+- [ ] Open `APP_URL/p/<slug>/privacy` and read it once: it tells respondents exactly who sees their details.
 - [ ] **Settings → QR code** → download / print the poster.
+
+### Optional: your own domain
+
+Cloudflare → Workers & Pages → your Pages project → **Custom domains → Set up a domain** (e.g.
+`shop.bajajcomputers.in`). Cloudflare adds the DNS record if the domain is on Cloudflare; otherwise add the
+CNAME it shows at your registrar. Then update the GitHub variable `APP_URL`, the Supabase Site URL and
+redirect URLs (step 5) and re-run **Deploy** (it updates `ALLOWED_ORIGINS` and `ADMIN_APP_URL`). Reprint the QR code.
+
+### Privacy & third parties (keep the privacy page true)
+
+Respondent pages load no analytics, ads or third-party scripts and set no cookies. Third parties that see data:
+the respondent's browser speech service (live transcript, e.g. Google in Chrome), Groq (recordings → text,
+Hindi → English), Telegram (summary of ideal leads to your chat), Supabase (storage) and Cloudflare (hosting).
+If you add or remove a service, update `apps/web/src/respondent/Trust.tsx` → `PrivacyPage`.
 
 ## Operations
 

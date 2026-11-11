@@ -69,11 +69,12 @@ jobs:
       - uses: denoland/setup-deno@v2
         with: { deno-version: v2.x }
       - run: npm ci
-      - run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium webkit
       - run: mkdir -p e2e-shots && bash scripts/e2e.sh
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           SHOTS_DIR: e2e-shots
+          E2E_BROWSERS: chromium,webkit
       - if: always()
         uses: actions/upload-artifact@v4
         with:
