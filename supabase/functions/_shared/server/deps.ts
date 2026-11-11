@@ -9,6 +9,28 @@ export interface Property {
   status: 'open' | 'closed';
   closed_message: string;
   default_lang: 'en' | 'hi';
+  brand_name: string;
+  contact_phone: string | null;
+  contact_whatsapp: string | null;
+  address_line: string | null;
+  logo_url: string | null;
+  shop_photo_url: string | null;
+  welcome_title_en: string | null;
+  welcome_title_hi: string | null;
+  welcome_body_en: string | null;
+  welcome_body_hi: string | null;
+  default_speech_lang: 'hi-IN' | 'en-IN';
+  audio_retention_days: number;
+}
+
+/** The public face of a property (what respondents see). */
+export function publicProperty(p: Property) {
+  return {
+    slug: p.slug, name: p.name, default_lang: p.default_lang, brand_name: p.brand_name, contact_phone: p.contact_phone,
+    contact_whatsapp: p.contact_whatsapp, address_line: p.address_line, logo_url: p.logo_url, shop_photo_url: p.shop_photo_url,
+    welcome_title_en: p.welcome_title_en, welcome_title_hi: p.welcome_title_hi, welcome_body_en: p.welcome_body_en,
+    welcome_body_hi: p.welcome_body_hi, default_speech_lang: p.default_speech_lang, audio_retention_days: p.audio_retention_days,
+  };
 }
 
 export interface FormVersion {
@@ -71,6 +93,13 @@ export interface Db {
   leadForNotify(id: string): Promise<LeadForNotify | null>;
   heartbeat(source: string): Promise<void>;
   isAdminToken(jwt: string): Promise<boolean>;
+  /** user id when the token belongs to an OWNER, else null */
+  ownerFromToken(jwt: string): Promise<string | null>;
+}
+
+export interface AuthAdmin {
+  /** Invite by email (sends Supabase's invite email). Returns the user id; existing users are returned, not re-invited. */
+  inviteUser(email: string, redirectTo: string): Promise<{ id: string; invited: boolean }>;
 }
 
 export interface Storage {
@@ -114,6 +143,7 @@ export interface Env {
 
 export interface Deps {
   db: Db;
+  auth: AuthAdmin;
   storage: Storage;
   speech: Speech;
   messenger: Messenger;

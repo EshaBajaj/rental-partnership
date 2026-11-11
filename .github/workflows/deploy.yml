@@ -70,7 +70,7 @@ jobs:
 
       - name: Deploy Edge Functions
         run: |
-          for f in form track voice-upload-url transcribe-now transcribe-worker submit notify health; do
+          for f in form track voice-upload-url transcribe-now transcribe-worker submit notify health admin-invite; do
             supabase functions deploy "$f" --project-ref "$PROJECT_REF" --no-verify-jwt --import-map supabase/functions/import_map.json
           done
 

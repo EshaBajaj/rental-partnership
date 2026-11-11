@@ -65,7 +65,12 @@ select t.eq((select count(*) from public.saved_views)::int, 0, 'saved views are 
 select t.eq((select count(*) from public.admins)::int, 2, 'owner sees all admins');
 select public.add_admin('Stranger@Example.com', 'staff');
 select t.eq((select count(*) from public.admins)::int, 3, 'owner added admin');
-delete from public.admins where user_id = '11111111-1111-4111-8111-111111111111';
-select t.eq((select count(*) from public.admins where role = 'owner')::int, 1, 'owner cannot delete self');
+select t.throws($$delete from public.admins where user_id = '11111111-1111-4111-8111-111111111111'$$, 'last owner', 'last owner cannot remove self');
+select t.throws($$update public.admins set role = 'staff' where user_id = '11111111-1111-4111-8111-111111111111'$$, 'last owner', 'last owner cannot be demoted');
+update public.admins set role = 'owner' where user_id = '22222222-2222-4222-8222-222222222222';
+update public.admins set role = 'staff' where user_id = '11111111-1111-4111-8111-111111111111';
+reset role;
+select t.eq((select string_agg(email, ',') from public.admins where role = 'owner'), 'staff@example.com', 'demoted once another owner exists');
+select t.throws($$delete from public.admins where role = 'owner'$$, 'last owner', 'even the service role cannot remove the last owner');
 select t.ok((select count(*) from public.audit_log where table_name = 'admins') >= 1, 'admins audited');
 reset role;

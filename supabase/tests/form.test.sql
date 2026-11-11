@@ -11,18 +11,22 @@ begin
   -- published question: no hard delete, key locked, incompatible type locked, compatible ok
   perform t.throws(format('delete from public.questions where id = %L', qexp), 'only be archived', 'published delete blocked');
   perform t.throws(format('update public.questions set key = %L where id = %L', 'exp2', qexp), 'locked', 'key locked');
-  perform t.throws(format('update public.questions set type = %L where id = %L', 'multi', qbiz), 'needs a new question', 'incompatible type');
-  update public.questions set type = 'dropdown' where id = qbiz;
-  perform t.eq((select type from public.questions where id = qbiz), 'dropdown', 'single → dropdown in place');
-  update public.questions set type = 'single' where id = qbiz;
+  perform t.throws(format('update public.questions set kind = %L, input_modes = null where id = %L', 'yes_no', qbiz), 'needs a new question', 'incompatible kind');
+  -- input-mode changes are compatible in-place edits on published questions
+  update public.questions set input_modes = jsonb_set(input_modes, '{choose,style}', '"dropdown"') where id = qbiz;
+  perform t.eq((select input_modes #>> '{choose,style}' from public.questions where id = qbiz), 'dropdown', 'radio → dropdown in place');
+  update public.questions set input_modes = input_modes || '{"type":{"enabled":true,"multiline":false,"min_chars":null,"max_chars":50,"placeholder_en":null,"placeholder_hi":null,"format":"any"}}' where id = qbiz;
+  perform t.eq((select input_modes #>> '{type,max_chars}' from public.questions where id = qbiz), '50', 'type mode + char limit in place');
+  update public.questions set input_modes = jsonb_set(jsonb_set(input_modes, '{choose,style}', '"radio"'), '{type,enabled}', 'false') where id = qbiz;
+  perform t.throws(format('update public.questions set input_modes = %L where id = %L', '{"primary":"nope"}', qbiz), 'questions_modes_shape', 'modes shape checked');
   perform t.throws(format('update public.question_options set value = %L where question_id = %L and value = %L', 'kirana', qbiz, 'grocery'), 'locked', 'option value locked');
   perform t.throws(format('delete from public.question_options where question_id = %L and value = %L', qbiz, 'grocery'), 'only be archived', 'published option delete blocked');
   perform t.throws(format('update public.question_options set archived_at = now() where value = %L', 'rent'), 'cannot be changed', 'path option locked');
   perform t.throws(format('update public.questions set archived_at = now() where key = %L', 'path'), 'cannot be archived', 'path locked');
 
   -- new (unpublished) question depending on experience; reorder above it → validator names both
-  insert into public.questions (property_id, key, type, label_en, position, required, show_if)
-  values (prop, 'years', 'number', 'How many years?', 8, false, '{"all":[{"q":"experience","op":"eq","v":"yes"}]}') returning id into qyears;
+  insert into public.questions (property_id, key, kind, input_modes, label_en, position, required, show_if)
+  values (prop, 'years', 'standard', public.sls_default_modes() || '{"primary":"type","choose":{"enabled":false},"type":{"enabled":true,"format":"number","max_chars":3}}', 'How many years?', 8, false, '{"all":[{"q":"experience","op":"eq","v":"yes"}]}') returning id into qyears;
   select array_agg(id order by case when id = qyears then 2.5 else position end, created_at) into ids from public.questions where property_id = prop and archived_at is null;
   perform public.reorder_questions(prop, ids);
   perform t.ok(array_to_string(public.sls_validate_draft(prop), '|') like '%“How many years?” depends on “Have you run a shop before?”, but “Have you run a shop before?” comes after it. Move “Have you run a shop before?” above “How many years?”%', 'order message');
@@ -61,21 +65,21 @@ begin
                jsonb_build_object(qyears, '{"all":[{"q":"business_type","op":"in","v":["clothing"]}]}'::jsonb)), 'archived', 'published option archived');
 
   -- unpublished question: hard delete
-  insert into public.questions (property_id, key, type, label_en, position) values (prop, 'tmp_q', 'short_text', 'Tmp', 50) returning id into qnew;
+  insert into public.questions (property_id, key, kind, input_modes, label_en, position) values (prop, 'tmp_q', 'standard', public.sls_default_modes(), 'Tmp', 50) returning id into qnew;
   perform t.eq(public.remove_question_or_option(qnew), 'deleted', 'unpublished question deleted');
 
-  -- incompatible type change on a published question: new key, old archived, refs migrated
+  -- kind change on a published question: new key, old archived, refs migrated
   update public.questions set show_if = '{"all":[{"q":"start_when","op":"eq","v":"immediately"}]}' where id = qyears;
-  qnew := public.replace_question_type((select id from public.questions where key = 'start_when'), 'multi', 'start_when_multi');
-  perform t.eq((select key from public.questions where id = qnew), 'start_when_multi', 'new key');
+  qnew := public.replace_question_kind((select id from public.questions where key = 'start_when'), 'date', 'start_date');
+  perform t.eq((select key || '/' || kind from public.questions where id = qnew), 'start_date/date', 'new key + kind');
+  perform t.eq((select input_modes from public.questions where id = qnew), null::jsonb, 'date has no input modes');
   perform t.ok((select archived_at is not null from public.questions where key = 'start_when'), 'old archived');
-  perform t.eq((select count(*) from public.question_options where question_id = qnew)::int, 4, 'options copied');
-  perform t.eq((select show_if #>> '{all,0,q}' from public.questions where id = qyears), 'start_when_multi', 'show_if migrated');
+  perform t.eq((select show_if #>> '{all,0,q}' from public.questions where id = qyears), 'start_date', 'show_if migrated');
   perform t.eq((select count(*) from public.profile_conditions c join public.profiles p on p.id = c.profile_id
-                where p.profile_set_id = d and c.question_key = 'start_when_multi')::int, 1, 'draft condition migrated');
+                where p.profile_set_id = d and c.question_key = 'start_date')::int, 1, 'draft condition migrated');
   perform t.eq((select count(*) from public.profile_conditions c join public.profiles p on p.id = c.profile_id
                 join public.profile_sets s on s.id = p.profile_set_id where s.is_current and c.question_key = 'start_when')::int, 1, 'published set untouched');
-  perform t.throws(format('select public.replace_question_type(%L, %L, %L)', (select id from public.questions where key = 'business_type'), 'multi', 'start_when'),
+  perform t.throws(format('select public.replace_question_kind(%L, %L, %L)', (select id from public.questions where key = 'business_type'), 'yes_no', 'start_when'),
                    'already used', 'archived keys stay reserved');
 
   -- restore an older version (rollback)

@@ -1,18 +1,17 @@
 // Edit-safety rules for the admin builder.
-import type { Cond, ProfileConditionDef, QuestionType, ShowIf, ShowIfNode } from './types.ts';
+import type { Cond, ProfileConditionDef, QuestionKind, ShowIf, ShowIfNode } from './types.ts';
 import { groupItems, isCond } from './showif.ts';
 
-export type TypeChange = 'same' | 'compatible' | 'incompatible';
+export type KindChange = 'same' | 'incompatible';
 
-const COMPATIBLE: Array<[QuestionType, QuestionType]> = [
-  ['single', 'dropdown'],
-  ['short_text', 'long_text'],
-];
-
-export function classifyTypeChange(from: QuestionType, to: QuestionType): TypeChange {
-  if (from === to) return 'same';
-  if (COMPATIBLE.some(([a, b]) => (a === from && b === to) || (a === to && b === from))) return 'compatible';
-  return 'incompatible';
+/**
+ * Changing a question's kind (standard / date / yes_no / contact) on a published question needs a
+ * new key. Everything inside input modes (toggling Choose/Type/Speak, choose style, char limits,
+ * pick limits, primary mode) is a compatible in-place edit: old answers stay valid and the new
+ * limits only apply to new submissions (the server validates against the version used).
+ */
+export function classifyKindChange(from: QuestionKind, to: QuestionKind): KindChange {
+  return from === to ? 'same' : 'incompatible';
 }
 
 /** Published = has been part of at least one published form version. */

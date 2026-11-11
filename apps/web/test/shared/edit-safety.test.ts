@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { canHardDelete, classifyTypeChange, findDependencies, removeFromShowIfRoot, renameKeyInShowIf } from '@shared/edit-safety.ts';
+import { canHardDelete, classifyKindChange, findDependencies, removeFromShowIfRoot, renameKeyInShowIf } from '@shared/edit-safety.ts';
 import type { ShowIf } from '@shared/types.ts';
 
-describe('classifyTypeChange', () => {
-  it('compatible pairs', () => {
-    expect(classifyTypeChange('single', 'dropdown')).toBe('compatible');
-    expect(classifyTypeChange('dropdown', 'single')).toBe('compatible');
-    expect(classifyTypeChange('short_text', 'long_text')).toBe('compatible');
-    expect(classifyTypeChange('multi', 'multi')).toBe('same');
-    expect(classifyTypeChange('single', 'multi')).toBe('incompatible');
-    expect(classifyTypeChange('number', 'currency')).toBe('incompatible');
+describe('classifyKindChange', () => {
+  it('only a change of kind needs a new question (mode edits are in place)', () => {
+    expect(classifyKindChange('standard', 'standard')).toBe('same');
+    expect(classifyKindChange('standard', 'yes_no')).toBe('incompatible');
+    expect(classifyKindChange('date', 'standard')).toBe('incompatible');
   });
   it('hard delete only before first publish', () => {
     expect(canHardDelete({ first_published_at: null })).toBe(true);

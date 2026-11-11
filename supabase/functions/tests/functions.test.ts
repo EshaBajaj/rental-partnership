@@ -8,16 +8,28 @@ import { makeHandler as transcribeNow } from '../transcribe-now/handler.ts';
 import { makeHandler as notify } from '../notify/handler.ts';
 import { makeHandler as worker } from '../transcribe-worker/handler.ts';
 import { makeHandler as health } from '../health/handler.ts';
+import { makeHandler as adminInvite } from '../admin-invite/handler.ts';
 import { formatLeadMessage } from '../_shared/server/core.ts';
 
 const RID = '22222222-2222-4222-8222-222222222222';
 const contact = { value: { name: 'Ramesh', phone: '9876543210', whatsapp_ok: true, consent: true } };
 const goodSubmit = {
   id: RID, property_slug: 'shop', form_version_id: FORM.id, duration_seconds: 90, lang: 'en',
-  answers: { path: { value: 'rent' }, budget: { value: 45000 }, contact },
+  answers: { path: { choose: ['rent'] }, budget: { text: '45000' }, contact },
 };
 
 // ---------------------------------------------------------------- form
+Deno.test('form: legacy (schema 1) configs are served upgraded to schema 2', async () => {
+  const { deps } = fakeDeps();
+  deps.db.currentForm = async () => ({ id: FORM.id, version: 1, config: { schema: 1, questions: [
+    { key: 'path', type: 'single', label_en: 'p', label_hi: null, help_en: null, help_hi: null, placeholder: null, required: true, show_if: null, validation: {}, allow_other: false, allow_voice: false, options: [{ value: 'rent', label_en: 'Rent', label_hi: null }] },
+  ] } as never });
+  const b = await (await form(deps)(new Request('https://fn/form?slug=shop'))).json();
+  assertEquals(b.form.config.schema, 2);
+  assertEquals(b.form.config.questions[0].kind, 'standard');
+  assertEquals(b.form.config.questions[0].input_modes.choose.style, 'radio');
+});
+
 Deno.test('form: open → config with 60 s cache', async () => {
   const { deps } = fakeDeps();
   const res = await form(deps)(new Request('https://fn/form?slug=shop'));
@@ -86,7 +98,7 @@ Deno.test('submit: validates, normalises phone, inserts, schedules notify', asyn
 
 Deno.test('submit: rejects hidden answers and bad values with 422 + details', async () => {
   const { deps } = fakeDeps();
-  const res = await submit(deps)(post('submit', { ...goodSubmit, answers: { ...goodSubmit.answers, path: { value: 'partner' } } }));
+  const res = await submit(deps)(post('submit', { ...goodSubmit, answers: { ...goodSubmit.answers, path: { choose: ['partner'] } } }));
   assertEquals(res.status, 422);
   const b = await res.json();
   assertEquals(b.code, 'validation');
@@ -116,14 +128,32 @@ Deno.test('submit: 5/hour per ip', async () => {
   assertEquals(res.status, 429);
 });
 
-Deno.test('submit: voice answer passes final transcript (≤2000) to the DB', async () => {
+Deno.test('submit: spoken answers pass final text, live transcript and audio flags to the DB', async () => {
   let payload: any = null;
   const { deps } = fakeDeps({ rpc: { submit_response: (a) => ((payload = a.p), { status: 'created', id: RID, notify: false }) } });
-  const res = await submit(deps)(post('submit', { ...goodSubmit, answers: { ...goodSubmit.answers, about: { value: 'edited text', voice: true } } }));
+  const res = await submit(deps)(post('submit', { ...goodSubmit, answers: { ...goodSubmit.answers,
+    about: { text: 'edited text', voice: true, speech: { live: 'edit text', audio_missing: false } } } }));
   assertEquals(res.status, 201);
-  assertEquals(payload.voice_finals, { about: 'edited text' });
-  const tooLong = await submit(deps)(post('submit', { ...goodSubmit, answers: { ...goodSubmit.answers, about: { value: 'x'.repeat(2001), voice: true } } }));
+  assertEquals(payload.voice, { about: { final: 'edited text', live: 'edit text', audio_missing: false, has_audio: true } });
+  assertEquals(payload.answers.budget, { text: '45000', number: 45000, display: '₹45,000', question_label: 'budget' });
+  assertEquals(payload.answers.path.choose, ['rent']);
+  // char limit (type.max_chars = 50) enforced on the server too
+  const tooLong = await submit(deps)(post('submit', { ...goodSubmit, answers: { ...goodSubmit.answers, about: { text: 'x'.repeat(51), voice: true } } }));
   assertEquals(tooLong.status, 422);
+  assertEquals((await tooLong.json()).details[0].code, 'too_long');
+  // keep_audio off: no recording flag accepted, live text is the answer
+  const live = await submit(deps)(post('submit', { ...goodSubmit, answers: { ...goodSubmit.answers, nick: { text: 'Raju', speech: { live: 'Raju', audio_missing: true } } } }));
+  assertEquals(live.status, 201);
+  assertEquals(payload.voice.nick, { final: 'Raju', live: 'Raju', audio_missing: true, has_audio: false });
+});
+
+Deno.test('submit: answers from an old app version (legacy `value`) are upgraded, not lost', async () => {
+  let payload: any = null;
+  const { deps } = fakeDeps({ rpc: { submit_response: (a) => ((payload = a.p), { status: 'created', id: RID, notify: false }) } });
+  const res = await submit(deps)(post('submit', { ...goodSubmit, answers: { path: { value: 'rent' }, budget: { value: 45000 }, contact } }));
+  assertEquals(res.status, 201);
+  assertEquals(payload.answers.path.choose, ['rent']);
+  assertEquals(payload.answers.budget.number, 45000);
 });
 
 Deno.test('submit: closed property → only waitlist', async () => {
@@ -165,6 +195,12 @@ Deno.test('voice-upload-url: limits and validation', async () => {
   assertEquals((await voiceUpload(deps)(post('voice-upload-url', { ...vu, bytes: 11 * 1024 * 1024 }))).status, 400);
   const r2 = await voiceUpload(deps)(post('voice-upload-url', { ...vu, question_key: 'budget' }));
   assertEquals((await r2.json()).code, 'voice_not_allowed');
+  // keep_audio off → no uploads
+  const r3 = await voiceUpload(deps)(post('voice-upload-url', { ...vu, question_key: 'nick' }));
+  assertEquals((await r3.json()).code, 'voice_not_allowed');
+  // longer than the question's max_seconds (60)
+  const r4 = await voiceUpload(deps)(post('voice-upload-url', { ...vu, duration_seconds: 70 }));
+  assertEquals(r4.status, 413);
 });
 
 // ---------------------------------------------------------------- transcribe-now
@@ -306,4 +342,30 @@ Deno.test('health: public summary vs detailed with secret; 503 when cron is stal
   assertEquals(b.checks.pg_cron.ok, false);
   const deep = await health(fresh.deps)(new Request('https://fn/health?deep=1', { headers: AUTH }));
   assertEquals((await deep.json()).checks.groq.ok, true);
+});
+
+// ---------------------------------------------------------------- admin-invite
+Deno.test('admin-invite: owners only; invites and records the admin row', async () => {
+  const notOwner = fakeDeps({ owner: null });
+  const r1 = await adminInvite(notOwner.deps)(post('admin-invite', { email: 'a@b.co' }, { authorization: 'Bearer staff' }));
+  assertEquals(r1.status, 403);
+  assertEquals((await r1.json()).code, 'not_owner');
+  let row: any = null;
+  const ok = fakeDeps({ owner: 'owner-1', rpc: { sls_upsert_admin: (a) => void (row = a) } });
+  const r2 = await adminInvite(ok.deps)(post('admin-invite', { email: ' New@Shop.IN ', role: 'staff' }, { authorization: 'Bearer owner' }));
+  assertEquals(r2.status, 200);
+  assertEquals(await r2.json(), { user_id: 'u-new', invited: true, role: 'staff' });
+  assertEquals(row, { p_user_id: 'u-new', p_email: 'new@shop.in', p_role: 'staff', p_actor: 'owner-1' });
+  const bad = await adminInvite(ok.deps)(post('admin-invite', { email: 'nope' }, { authorization: 'Bearer owner' }));
+  assertEquals(bad.status, 400);
+});
+
+Deno.test('form: exposes the brand / trust details respondents see', async () => {
+  const { deps } = fakeDeps();
+  const b = await (await form(deps)(new Request('https://fn/form?slug=shop'))).json();
+  assertEquals(b.property.brand_name, 'Bajaj Computers');
+  assertEquals(b.property.contact_phone, '+919876500000');
+  assertEquals(b.property.audio_retention_days, 180);
+  assertEquals(b.property.default_speech_lang, 'hi-IN');
+  assert(!('id' in b.property), 'internal id not exposed');
 });

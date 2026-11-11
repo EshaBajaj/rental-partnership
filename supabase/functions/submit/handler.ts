@@ -6,11 +6,11 @@ import { ipHash, processNotifications, rateLimit, rpcError } from '../_shared/se
 import { SubmitBody } from '../_shared/schemas.ts';
 import { ERROR_TEXT, validateOne, validateSubmission } from '../_shared/answers.ts';
 import type { CompiledQuestion, ContactValue, StoredAnswers } from '../_shared/types.ts';
-import { VOICE_LIMITS } from '../_shared/types.ts';
+import { normalizeConfig } from '../_shared/input-modes.ts';
 
 const WAITLIST_CONTACT: CompiledQuestion = {
-  key: 'contact', type: 'contact', label_en: 'Contact', label_hi: null, help_en: null, help_hi: null, placeholder: null,
-  required: true, show_if: null, validation: {}, allow_other: false, allow_voice: false, options: [],
+  key: 'contact', kind: 'contact', label_en: 'Contact', label_hi: null, help_en: null, help_hi: null,
+  required: true, show_if: null, validation: {}, input_modes: null, options: [],
 };
 
 export function makeHandler(deps: Deps) {
@@ -37,10 +37,10 @@ export function makeHandler(deps: Deps) {
         const code = r.ok ? 'required' : r.code;
         throw new HttpError(422, 'validation', ERROR_TEXT[code][b.lang], [{ key: 'contact', code, message: ERROR_TEXT[code][b.lang] }]);
       }
-      const c = r.value as ContactValue;
-      const answers: StoredAnswers = { contact: { value: r.value, display: r.display, question_label: 'Contact' } };
+      const c = r.stored.value as ContactValue;
+      const answers: StoredAnswers = { contact: { ...r.stored, display: r.display, question_label: 'Contact' } };
       payload = {
-        path: 'waitlist', answers, voice_finals: {}, name: c.name, phone_e164: c.phone, whatsapp_ok: c.whatsapp_ok,
+        path: 'waitlist', answers, voice: {}, name: c.name, phone_e164: c.phone, whatsapp_ok: c.whatsapp_ok,
         form_version_id: null,
       };
     } else {
@@ -48,16 +48,13 @@ export function makeHandler(deps: Deps) {
       if (!b.form_version_id) throw new HttpError(400, 'bad_request', 'form_version_id is required.');
       const fv = await deps.db.formVersion(b.form_version_id, p.id);
       if (!fv) throw new HttpError(409, 'form_changed', 'The form has changed. Please reload.');
-      const v = validateSubmission(fv.config, b.answers, { rejectHidden: true, lang: b.lang });
+      // validate against the exact version the respondent used (older versions are upgraded on read)
+      const v = validateSubmission(normalizeConfig(fv.config), b.answers, { rejectHidden: true, lang: b.lang });
       if (!v.ok || !v.contact || !v.path) {
         throw new HttpError(422, 'validation', v.errors[0]?.message ?? 'Please check your answers.', v.errors);
       }
-      const voice_finals: Record<string, string> = {};
-      for (const k of v.voiceKeys) {
-        voice_finals[k] = String(v.answers[k]?.value ?? '').slice(0, VOICE_LIMITS.maxTranscriptChars);
-      }
       payload = {
-        path: v.path, answers: v.answers, voice_finals, name: v.contact.name, phone_e164: v.contact.phone_e164,
+        path: v.path, answers: v.answers, voice: v.voice, name: v.contact.name, phone_e164: v.contact.phone_e164,
         whatsapp_ok: v.contact.whatsapp_ok, form_version_id: fv.id,
       };
     }

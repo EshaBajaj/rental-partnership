@@ -2,10 +2,11 @@
 // publishing with plain-language messages. The SQL publish function re-checks the
 // structural rules server-side (public.sls_validate_draft).
 
-import type { Cond, Op, QuestionType, ShowIfNode, Validation } from './types.ts';
-import { CHOICE_TYPES, OTHER_VALUE, PATH_KEY, PATH_VALUES } from './types.ts';
+import type { Cond, InputModes, Op, QuestionKind, ShowIfNode, Validation } from './types.ts';
+import { OTHER_VALUE, PATH_KEY, PATH_VALUES } from './types.ts';
 import { collectConds, evalTri, groupItems, isCond, isGroup, isOp, type Tri } from './showif.ts';
-import { activeOptions, activeQuestions, type DraftQuestion, optionValuesOf } from './compile.ts';
+import { activeOptions, activeQuestions, type DraftQuestion, hasChoices, optionValuesOf } from './compile.ts';
+import { enabledModes, isNumericFormat, isSingleSelect, LIMITS, withDefaults } from './input-modes.ts';
 
 export interface Issue {
   level: 'error' | 'warning';
@@ -37,30 +38,35 @@ export function opLabel(op: Op): string {
   return OP_LABEL[op] ?? op;
 }
 
-/** Which operators make sense for a question type. */
-export function opsForType(t: QuestionType): Op[] {
-  switch (t) {
-    case 'single':
-    case 'dropdown':
-    case 'yes_no':
-      return ['eq', 'neq', 'in', 'not_in', 'answered', 'not_answered'];
-    case 'multi':
-      return ['contains_any', 'contains_all', 'eq', 'neq', 'not_in', 'answered', 'not_answered'];
-    case 'number':
-    case 'currency':
-      return ['gte', 'lte', 'between', 'eq', 'neq', 'answered', 'not_answered'];
-    case 'date':
-      return ['gte', 'lte', 'between', 'answered', 'not_answered'];
-    case 'short_text':
-    case 'long_text':
-    case 'voice':
-      return ['answered', 'not_answered', 'eq', 'neq'];
+/** Which operators make sense for a question (by kind and enabled input modes). */
+export function opsForQuestion(q: { kind: QuestionKind; input_modes: InputModes | null }): Op[] {
+  const base: Op[] = ['answered', 'not_answered'];
+  switch (q.kind) {
     case 'contact':
       return [];
+    case 'yes_no':
+      return ['eq', 'neq', 'in', 'not_in', ...base];
+    case 'date':
+      return ['gte', 'lte', 'between', ...base];
+    case 'standard': {
+      const m = withDefaults(q.input_modes);
+      const ops = new Set<Op>();
+      if (m.choose.enabled) {
+        for (const o of ['eq', 'neq', 'in', 'not_in'] as Op[]) ops.add(o);
+        if (!isSingleSelect(m.choose)) for (const o of ['contains_any', 'contains_all'] as Op[]) ops.add(o);
+      }
+      if (isNumericFormat(m)) for (const o of ['gte', 'lte', 'between', 'eq', 'neq'] as Op[]) ops.add(o);
+      else if (m.type.enabled || m.speak.enabled) for (const o of ['eq', 'neq'] as Op[]) ops.add(o);
+      for (const o of base) ops.add(o);
+      return [...ops];
+    }
   }
 }
 
-type RefQuestion = Pick<DraftQuestion, 'key' | 'label_en' | 'type' | 'allow_other' | 'options' | 'archived_at'>;
+const kindLabel = (q: { kind: QuestionKind; input_modes: InputModes | null }) =>
+  q.kind === 'standard' ? (isNumericFormat(q.input_modes) ? 'number' : q.input_modes?.choose.enabled ? 'choice' : 'text') : q.kind.replace('_', '/');
+
+type RefQuestion = Pick<DraftQuestion, 'key' | 'label_en' | 'kind' | 'input_modes' | 'options' | 'archived_at'>;
 
 /**
  * Validate one condition (from show_if, a profile condition or a never-rule)
@@ -80,12 +86,12 @@ export function checkCondition(c: Cond, ref: RefQuestion | undefined, where: str
     errs.push(`${where} has an unknown comparison “${String(c.op)}”.`);
     return errs;
   }
-  if (ref.type === 'contact') {
+  if (ref.kind === 'contact') {
     errs.push(`${where} can't depend on the contact details question.`);
     return errs;
   }
-  if (!opsForType(ref.type).includes(c.op)) {
-    errs.push(`${where}: “${opLabel(c.op)}” can't be used with ${q$(ref)} (a ${ref.type.replace('_', ' ')} question).`);
+  if (!opsForQuestion(ref).includes(c.op)) {
+    errs.push(`${where}: “${opLabel(c.op)}” can't be used with ${q$(ref)} (a ${kindLabel(ref)} question).`);
     return errs;
   }
   const v = c.v;
@@ -93,7 +99,7 @@ export function checkCondition(c: Cond, ref: RefQuestion | undefined, where: str
   if (c.op === 'between') {
     if (!Array.isArray(v) || v.length !== 2 || v.some((x) => x === '' || x === null || x === undefined)) {
       errs.push(`${where}: “is between” needs a lowest and a highest value.`);
-    } else if ((ref.type === 'number' || ref.type === 'currency') && v.some((x) => typeof x !== 'number')) {
+    } else if (isNumericFormat(ref.input_modes) && v.some((x) => typeof x !== 'number')) {
       errs.push(`${where}: the range for ${q$(ref)} must be numbers.`);
     } else if (typeof v[0] === 'number' && typeof v[1] === 'number' && v[0] > v[1]) {
       errs.push(`${where}: the lowest value is bigger than the highest value.`);
@@ -110,13 +116,16 @@ export function checkCondition(c: Cond, ref: RefQuestion | undefined, where: str
     errs.push(`${where}: enter a value to compare with.`);
     return errs;
   }
-  if ((c.op === 'gte' || c.op === 'lte') && (ref.type === 'number' || ref.type === 'currency') && typeof v !== 'number') {
+  if ((c.op === 'gte' || c.op === 'lte') && isNumericFormat(ref.input_modes) && typeof v !== 'number') {
     errs.push(`${where}: the value for ${q$(ref)} must be a number.`);
   }
-  if (CHOICE_TYPES.includes(ref.type)) {
-    const allOpts = ref.type === 'yes_no' ? optionValuesOf(ref) : ref.options.map((o) => o.value);
-    const active = ref.type === 'yes_no' ? allOpts : ref.options.filter((o) => !o.archived_at).map((o) => o.value);
-    const allowed = new Set([...active, ...(ref.allow_other ? [OTHER_VALUE] : [])]);
+  const comparesChoice = c.op === 'in' || c.op === 'not_in' || c.op === 'contains_any' || c.op === 'contains_all' ||
+    ((c.op === 'eq' || c.op === 'neq') && !isNumericFormat(ref.input_modes) && hasChoices(ref));
+  if (hasChoices(ref) && comparesChoice) {
+    const allOpts = ref.kind === 'yes_no' ? optionValuesOf(ref) : ref.options.map((o) => o.value);
+    const active = ref.kind === 'yes_no' ? allOpts : ref.options.filter((o) => !o.archived_at).map((o) => o.value);
+    const allowOther = ref.kind === 'standard' && !!withDefaults(ref.input_modes).choose.allow_other;
+    const allowed = new Set([...active, ...(allowOther ? [OTHER_VALUE] : [])]);
     for (const x of isList ? (v as unknown[]) : [v]) {
       const s = String(x);
       if (allowed.has(s)) continue;
@@ -146,29 +155,45 @@ function checkTree(node: ShowIfNode, depth: number): string | null {
   return 'is not a valid condition.';
 }
 
-function checkValidation(q: DraftQuestion, issues: Issue[]) {
+function checkModes(q: DraftQuestion, issues: Issue[]) {
   const v: Validation = q.validation ?? {};
-  const err = (m: string) => issues.push({ level: 'error', code: 'validation', message: `${q$(q)}: ${m}`, question_key: q.key });
-  const num = (x: unknown) => (typeof x === 'number' ? x : null);
-  if (q.type === 'number' || q.type === 'currency') {
-    const mn = num(v.min);
-    const mx = num(v.max);
-    if (v.min != null && mn === null) err('the minimum must be a number.');
-    if (v.max != null && mx === null) err('the maximum must be a number.');
-    if (mn !== null && mx !== null && mn > mx) err('the minimum is bigger than the maximum.');
+  const err = (m: string) => issues.push({ level: 'error', code: 'modes', message: `${q$(q)}: ${m}`, question_key: q.key });
+  const int = (x: unknown) => typeof x === 'number' && Number.isInteger(x);
+  if (q.kind === 'date' && v.min && v.max && String(v.min) > String(v.max)) err('the earliest date is after the latest date.');
+  if (q.kind !== 'standard') return;
+  if (!q.input_modes) return err('choose at least one way to answer (Choose, Type or Speak).');
+  const m = withDefaults(q.input_modes);
+  const on = enabledModes(m);
+  if (on.length === 0) return err('turn on at least one way to answer (Choose, Type or Speak).');
+  if (!m[m.primary].enabled) err(`the main way to answer (“${m.primary}”) is switched off. Turn it on or pick another main way.`);
+  if (m.choose.enabled) {
+    const opts = activeOptions(q).length + (m.choose.allow_other ? 1 : 0);
+    const mn = m.choose.min_picks;
+    const mx = m.choose.max_picks;
+    if (mn !== null && (!int(mn) || mn < 0)) err('“pick at least” must be a whole number.');
+    if (mx !== null && (!int(mx) || mx < 1)) err('“pick at most” must be 1 or more.');
+    if (!isSingleSelect(m.choose)) {
+      if (mn !== null && mx !== null && mn > mx) err('“pick at least” is bigger than “pick at most”.');
+      if (mn !== null && mn > opts) err(`“pick at least” is ${mn} but there are only ${opts} options.`);
+    }
+    if (m.choose.allow_other && (!int(m.choose.other_max_chars) || m.choose.other_max_chars < 1 || m.choose.other_max_chars > LIMITS.otherMaxChars)) {
+      err(`the “Other” answer length must be between 1 and ${LIMITS.otherMaxChars} characters.`);
+    }
   }
-  if (q.type === 'date' && v.min && v.max && String(v.min) > String(v.max)) err('the earliest date is after the latest date.');
-  if (q.type === 'multi') {
-    const opts = activeOptions(q).length + (q.allow_other ? 1 : 0);
-    const mn = v.minPicks ?? null;
-    const mx = v.maxPicks ?? null;
-    if (mn !== null && (!Number.isInteger(mn) || mn < 0)) err('“pick at least” must be a whole number.');
-    if (mx !== null && (!Number.isInteger(mx) || mx < 1)) err('“pick at most” must be 1 or more.');
-    if (mn !== null && mx !== null && mn > mx) err('“pick at least” is bigger than “pick at most”.');
-    if (mn !== null && mn > opts) err(`“pick at least” is ${mn} but there are only ${opts} options.`);
+  if (m.type.enabled) {
+    const { min_chars: mn, max_chars: mx } = m.type;
+    if (mx !== null && (!int(mx) || mx < 1 || mx > LIMITS.maxChars)) err(`maximum characters must be between 1 and ${LIMITS.maxChars}.`);
+    if (mn !== null && (!int(mn) || mn < 0)) err('minimum characters must be a whole number.');
+    if (mn !== null && mx !== null && mn > mx) err('minimum characters is bigger than the maximum.');
+    if (m.type.format === 'number' || m.type.format === 'currency') {
+      const num = (x: unknown) => (typeof x === 'number' ? x : null);
+      if (v.min != null && num(v.min) === null) err('the smallest allowed number must be a number.');
+      if (v.max != null && num(v.max) === null) err('the largest allowed number must be a number.');
+      if (num(v.min) !== null && num(v.max) !== null && (v.min as number) > (v.max as number)) err('the smallest number is bigger than the largest.');
+    }
   }
-  if ((q.type === 'short_text' || q.type === 'long_text' || q.type === 'voice') && v.maxLength != null) {
-    if (!Number.isInteger(v.maxLength) || v.maxLength < 1 || v.maxLength > 2000) err('maximum length must be between 1 and 2000.');
+  if (m.speak.enabled && (!int(m.speak.max_seconds) || m.speak.max_seconds < LIMITS.speakMinSeconds || m.speak.max_seconds > LIMITS.speakMaxSeconds)) {
+    err(`recording length must be between ${LIMITS.speakMinSeconds} and ${LIMITS.speakMaxSeconds} seconds.`);
   }
 }
 
@@ -227,7 +252,10 @@ export function validateDraft(questions: DraftQuestion[]): Issue[] {
     err('path_missing', 'The first question must be the “Rent / Partner / Either” question (key “path”). Restore it.');
   } else {
     if (active[0].key !== PATH_KEY) err('path_not_first', `The “Rent / Partner / Either” question must be first. Move ${q$(path)} to the top.`, PATH_KEY);
-    if (path.type !== 'single') err('path_type', `${q$(path)} must be a single-choice question.`, PATH_KEY);
+    const pm = path.kind === 'standard' ? withDefaults(path.input_modes) : null;
+    if (!pm || !pm.choose.enabled || !isSingleSelect(pm.choose) || pm.primary !== 'choose' || pm.type.enabled || pm.speak.enabled || pm.choose.allow_other) {
+      err('path_type', `${q$(path)} must be answered by choosing exactly one option (radio or dropdown), with typing, speaking and “Other” switched off.`, PATH_KEY);
+    }
     if (path.show_if) err('path_showif', `${q$(path)} is always shown; remove its condition.`, PATH_KEY);
     const vals = activeOptions(path).map((o) => o.value);
     for (const v of PATH_VALUES) if (!vals.includes(v)) err('path_options', `${q$(path)} must keep the answer “${v}”.`, PATH_KEY);
@@ -236,7 +264,7 @@ export function validateDraft(questions: DraftQuestion[]): Issue[] {
   }
 
   // contact question
-  const contacts = active.filter((q) => q.type === 'contact');
+  const contacts = active.filter((q) => q.kind === 'contact');
   if (contacts.length === 0) err('contact_missing', 'Add a “Contact details” question — without it you cannot reach anyone.');
   if (contacts.length > 1) err('contact_multiple', `There are ${contacts.length} contact questions (${contacts.map(q$).join(', ')}). Keep exactly one.`);
   for (const c of contacts) {
@@ -245,7 +273,7 @@ export function validateDraft(questions: DraftQuestion[]): Issue[] {
 
   for (const q of active) {
     if (!q.label_en.trim()) err('label_missing', `A question (key “${q.key}”) has no English text.`, q.key);
-    if (q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') {
+    if (q.kind === 'standard' && withDefaults(q.input_modes).choose.enabled) {
       const n = activeOptions(q).length;
       if (n < 2) err('options_min', `${q$(q)} needs at least 2 answer options (it has ${n}).`, q.key);
       const vals = new Set<string>();
@@ -256,7 +284,7 @@ export function validateDraft(questions: DraftQuestion[]): Issue[] {
         vals.add(o.value);
       }
     }
-    checkValidation(q, issues);
+    checkModes(q, issues);
 
     if (q.show_if) {
       const where = `${q$(q)} (show-if)`;

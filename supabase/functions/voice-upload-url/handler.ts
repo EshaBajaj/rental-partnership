@@ -4,6 +4,7 @@ import type { Deps } from '../_shared/server/deps.ts';
 import { ipHash, rateLimit, rpcError } from '../_shared/server/core.ts';
 import { VoiceUploadBody } from '../_shared/schemas.ts';
 import { VOICE_LIMITS } from '../_shared/types.ts';
+import { acceptsAudio, normalizeConfig } from '../_shared/input-modes.ts';
 
 export function makeHandler(deps: Deps) {
   return serve(['POST'], deps.env.allowedOrigins, async (req) => {
@@ -18,8 +19,11 @@ export function makeHandler(deps: Deps) {
     if (p.status !== 'open') throw new HttpError(409, 'closed', 'This form is closed.');
     const fv = await deps.db.formVersion(b.form_version_id, p.id);
     if (!fv) throw new HttpError(409, 'form_changed', 'The form has changed. Please reload.');
-    const q = fv.config.questions.find((x) => x.key === b.question_key);
-    if (!q || !q.allow_voice) throw new HttpError(400, 'voice_not_allowed', 'This question does not accept voice answers.');
+    const q = normalizeConfig(fv.config).questions.find((x) => x.key === b.question_key);
+    if (!q || !acceptsAudio(q)) throw new HttpError(400, 'voice_not_allowed', 'This question does not accept voice recordings.');
+    if (b.duration_seconds > q.input_modes!.speak.max_seconds + 3) {
+      throw new HttpError(413, 'too_long', `Recordings for this question can be up to ${q.input_modes!.speak.max_seconds} seconds.`);
+    }
 
     let prep: { path: string; previous_path: string | null };
     try {

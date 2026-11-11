@@ -16,6 +16,6 @@ describe('seed fixture matches seed.sql', () => {
   it('has the same keys and order', () => {
     const sql = readFileSync(fileURLToPath(new URL('../../../../supabase/seed.sql', import.meta.url)), 'utf8');
     const keys = [...sql.matchAll(/values \(prop, '([a-z_]+)', '([a-z_]+)'/g)].map((m) => [m[1], m[2]]);
-    expect(keys).toEqual(compileForm(seedForm()).questions.map((q) => [q.key, q.type]));
+    expect(keys).toEqual(compileForm(seedForm()).questions.map((q) => [q.key, q.kind]));
   });
 });

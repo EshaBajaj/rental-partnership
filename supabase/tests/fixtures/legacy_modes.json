@@ -1,0 +1,376 @@
+[
+ {
+  "type": "single",
+  "allow_other": false,
+  "allow_voice": false,
+  "validation": {},
+  "placeholder": null,
+  "expected": {
+   "primary": "choose",
+   "choose": {
+    "enabled": true,
+    "style": "radio",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": false,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": false,
+    "multiline": false,
+    "min_chars": null,
+    "max_chars": 300,
+    "placeholder_en": null,
+    "placeholder_hi": null,
+    "format": "any"
+   },
+   "speak": {
+    "enabled": false,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "single",
+  "allow_other": true,
+  "allow_voice": false,
+  "validation": {},
+  "placeholder": null,
+  "expected": {
+   "primary": "choose",
+   "choose": {
+    "enabled": true,
+    "style": "radio",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": true,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": false,
+    "multiline": false,
+    "min_chars": null,
+    "max_chars": 300,
+    "placeholder_en": null,
+    "placeholder_hi": null,
+    "format": "any"
+   },
+   "speak": {
+    "enabled": false,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "multi",
+  "allow_other": false,
+  "allow_voice": false,
+  "validation": {
+   "minPicks": 1,
+   "maxPicks": 3
+  },
+  "placeholder": null,
+  "expected": {
+   "primary": "choose",
+   "choose": {
+    "enabled": true,
+    "style": "checkbox",
+    "min_picks": 1,
+    "max_picks": 3,
+    "allow_other": false,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": false,
+    "multiline": false,
+    "min_chars": null,
+    "max_chars": 300,
+    "placeholder_en": null,
+    "placeholder_hi": null,
+    "format": "any"
+   },
+   "speak": {
+    "enabled": false,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "dropdown",
+  "allow_other": true,
+  "allow_voice": false,
+  "validation": {},
+  "placeholder": null,
+  "expected": {
+   "primary": "choose",
+   "choose": {
+    "enabled": true,
+    "style": "dropdown",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": true,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": false,
+    "multiline": false,
+    "min_chars": null,
+    "max_chars": 300,
+    "placeholder_en": null,
+    "placeholder_hi": null,
+    "format": "any"
+   },
+   "speak": {
+    "enabled": false,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "short_text",
+  "allow_other": false,
+  "allow_voice": false,
+  "validation": {},
+  "placeholder": "Your shop name",
+  "expected": {
+   "primary": "type",
+   "choose": {
+    "enabled": false,
+    "style": "radio",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": false,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": true,
+    "multiline": false,
+    "min_chars": null,
+    "max_chars": 200,
+    "placeholder_en": "Your shop name",
+    "placeholder_hi": null,
+    "format": "any"
+   },
+   "speak": {
+    "enabled": false,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "short_text",
+  "allow_other": false,
+  "allow_voice": true,
+  "validation": {
+   "maxLength": 80
+  },
+  "placeholder": null,
+  "expected": {
+   "primary": "type",
+   "choose": {
+    "enabled": false,
+    "style": "radio",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": false,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": true,
+    "multiline": false,
+    "min_chars": null,
+    "max_chars": 80,
+    "placeholder_en": null,
+    "placeholder_hi": null,
+    "format": "any"
+   },
+   "speak": {
+    "enabled": true,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "long_text",
+  "allow_other": false,
+  "allow_voice": true,
+  "validation": {},
+  "placeholder": null,
+  "expected": {
+   "primary": "type",
+   "choose": {
+    "enabled": false,
+    "style": "radio",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": false,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": true,
+    "multiline": true,
+    "min_chars": null,
+    "max_chars": 2000,
+    "placeholder_en": null,
+    "placeholder_hi": null,
+    "format": "any"
+   },
+   "speak": {
+    "enabled": true,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "number",
+  "allow_other": false,
+  "allow_voice": false,
+  "validation": {
+   "min": 0,
+   "max": 50
+  },
+  "placeholder": null,
+  "expected": {
+   "primary": "type",
+   "choose": {
+    "enabled": false,
+    "style": "radio",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": false,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": true,
+    "multiline": false,
+    "min_chars": null,
+    "max_chars": 15,
+    "placeholder_en": null,
+    "placeholder_hi": null,
+    "format": "number"
+   },
+   "speak": {
+    "enabled": false,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "currency",
+  "allow_other": false,
+  "allow_voice": false,
+  "validation": {
+   "min": 0
+  },
+  "placeholder": "50000",
+  "expected": {
+   "primary": "type",
+   "choose": {
+    "enabled": false,
+    "style": "radio",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": false,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": true,
+    "multiline": false,
+    "min_chars": null,
+    "max_chars": 15,
+    "placeholder_en": "50000",
+    "placeholder_hi": null,
+    "format": "currency"
+   },
+   "speak": {
+    "enabled": false,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "voice",
+  "allow_other": false,
+  "allow_voice": true,
+  "validation": {},
+  "placeholder": null,
+  "expected": {
+   "primary": "speak",
+   "choose": {
+    "enabled": false,
+    "style": "radio",
+    "min_picks": null,
+    "max_picks": null,
+    "allow_other": false,
+    "other_max_chars": 200
+   },
+   "type": {
+    "enabled": true,
+    "multiline": true,
+    "min_chars": null,
+    "max_chars": 2000,
+    "placeholder_en": null,
+    "placeholder_hi": null,
+    "format": "any"
+   },
+   "speak": {
+    "enabled": true,
+    "max_seconds": 120,
+    "live_transcript": true,
+    "allow_edit": true,
+    "keep_audio": true
+   }
+  }
+ },
+ {
+  "type": "yes_no",
+  "allow_other": false,
+  "allow_voice": false,
+  "validation": {},
+  "placeholder": null,
+  "expected": null
+ },
+ {
+  "type": "date",
+  "allow_other": false,
+  "allow_voice": false,
+  "validation": {},
+  "placeholder": null,
+  "expected": null
+ },
+ {
+  "type": "contact",
+  "allow_other": false,
+  "allow_voice": false,
+  "validation": {},
+  "placeholder": null,
+  "expected": null
+ }
+]

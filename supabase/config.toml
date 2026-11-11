@@ -47,3 +47,6 @@ import_map = "./functions/import_map.json"
 [functions.health]
 verify_jwt = false
 import_map = "./functions/import_map.json"
+[functions.admin-invite]
+verify_jwt = false
+import_map = "./functions/import_map.json"

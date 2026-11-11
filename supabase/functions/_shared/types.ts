@@ -1,6 +1,7 @@
 // Shared domain types. Imported by the web app (Vite) and by Edge Functions (Deno).
 // Keep this file dependency-free.
 
+/** Legacy (form schema 1) question types. Still understood when reading old form versions. */
 export const QUESTION_TYPES = [
   'single',
   'multi',
@@ -16,9 +17,47 @@ export const QUESTION_TYPES = [
 ] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 
-export const CHOICE_TYPES: readonly QuestionType[] = ['single', 'multi', 'dropdown', 'yes_no'];
-export const TEXT_TYPES: readonly QuestionType[] = ['short_text', 'long_text', 'voice'];
-export const NUMERIC_TYPES: readonly QuestionType[] = ['number', 'currency'];
+/** What a question is. 'standard' questions are answered through their input modes. */
+export const QUESTION_KINDS = ['standard', 'date', 'yes_no', 'contact'] as const;
+export type QuestionKind = (typeof QUESTION_KINDS)[number];
+
+export const INPUT_MODES = ['choose', 'type', 'speak'] as const;
+export type InputMode = (typeof INPUT_MODES)[number];
+export const CHOOSE_STYLES = ['radio', 'checkbox', 'dropdown', 'chips'] as const;
+export type ChooseStyle = (typeof CHOOSE_STYLES)[number];
+export const TEXT_FORMATS = ['any', 'number', 'currency', 'email'] as const;
+export type TextFormat = (typeof TEXT_FORMATS)[number];
+
+export interface ChooseMode {
+  enabled: boolean;
+  style: ChooseStyle;
+  min_picks: number | null;
+  max_picks: number | null;
+  allow_other: boolean;
+  other_max_chars: number;
+}
+export interface TypeMode {
+  enabled: boolean;
+  multiline: boolean;
+  min_chars: number | null;
+  max_chars: number | null;
+  placeholder_en: string | null;
+  placeholder_hi: string | null;
+  format: TextFormat;
+}
+export interface SpeakMode {
+  enabled: boolean;
+  max_seconds: number;
+  live_transcript: boolean;
+  allow_edit: boolean;
+  keep_audio: boolean;
+}
+export interface InputModes {
+  primary: InputMode;
+  choose: ChooseMode;
+  type: TypeMode;
+  speak: SpeakMode;
+}
 
 export const OPS = [
   'eq',
@@ -75,23 +114,25 @@ export interface CompiledOption {
 
 export interface CompiledQuestion {
   key: string;
-  type: QuestionType;
+  kind: QuestionKind;
   label_en: string;
   label_hi: string | null;
   help_en: string | null;
   help_hi: string | null;
-  placeholder: string | null;
   required: boolean;
   show_if: ShowIf | null;
+  /** date: min/max ISO dates; standard with number/currency format: min/max values */
   validation: Validation;
-  allow_other: boolean;
-  allow_voice: boolean;
+  /** only for kind 'standard' */
+  input_modes: InputModes | null;
+  /** choose options (standard with choose enabled) or yes/no */
   options: CompiledOption[];
 }
 
-/** The immutable compiled config stored in form_versions.config */
+/** The immutable compiled config stored in form_versions.config (schema 2).
+ *  Schema-1 configs (legacy `type`) are upgraded on read by normalizeConfig(). */
 export interface FormConfig {
-  schema: 1;
+  schema: 2;
   questions: CompiledQuestion[];
 }
 
@@ -102,24 +143,34 @@ export interface ContactValue {
   consent: boolean;
 }
 
-export type AnswerValue = string | number | string[] | ContactValue;
-
 /** What the client sends per question. */
 export interface RawAnswer {
-  value: AnswerValue | null;
+  /** picked option values (always an array, even for radio / yes_no) */
+  choose?: string[] | null;
   other_text?: string | null;
-  /** true when this text answer came from a voice recording (response_id + question key identify it) */
+  /** typed text, or the (possibly edited) transcript of a spoken answer, or an ISO date */
+  text?: string | null;
+  /** an audio recording was uploaded for this question (response_id + key identify it) */
   voice?: boolean;
+  /** live in-browser transcript, and whether audio is missing (silent / failed mic / keep_audio off) */
+  speech?: { live?: string | null; audio_missing?: boolean } | null;
+  /** contact details (kind 'contact'); legacy clients sent every answer here (see upgradeRawAnswer) */
+  value?: ContactValue | string | number | string[] | null;
 }
 export type RawAnswers = Record<string, RawAnswer>;
 
-/** What is stored in responses.answers per key. */
+/** What is stored in responses.answers per key. Old leads may still have the legacy `value` field. */
 export interface StoredAnswer {
-  value: AnswerValue;
+  choose?: string[];
+  other_text?: string;
+  text?: string;
+  /** numeric value of `text` for number/currency formats (used by conditions) */
+  number?: number;
+  /** contact details, or a legacy (schema-1) answer value */
+  value?: unknown;
+  voice_note_id?: string;
   display: string;
   question_label: string;
-  other_text?: string;
-  voice_note_id?: string;
 }
 export type StoredAnswers = Record<string, StoredAnswer>;
 
@@ -225,4 +276,3 @@ export const VOICE_LIMITS = {
   maxTranscriptChars: 2000,
 } as const;
 
-export const TEXT_DEFAULT_MAX = { short_text: 200, long_text: 2000, voice: 2000 } as const;

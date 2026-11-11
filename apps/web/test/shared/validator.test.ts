@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hasErrors, screensPerPath, validateDraft } from '@shared/validator.ts';
 import { compileForm } from '@shared/compile.ts';
-import { opt, q, seedForm } from '../fixtures.ts';
+import { modes, opt, q, seedForm, TEXT } from '../fixtures.ts';
 
 const msgs = (qs: ReturnType<typeof seedForm>) => validateDraft(qs).map((i) => i.message);
 const move = <T extends { position: number }>(arr: T[], from: number, to: number): T[] => {
@@ -20,7 +20,7 @@ describe('validateDraft', () => {
   it('dependency after its dependent → names both questions and says what to move', () => {
     const qs = seedForm();
     // add a question that depends on experience, then move it above experience
-    qs.splice(7, 0, q('years', 'number', { label_en: 'How many years?', show_if: { all: [{ q: 'experience', op: 'eq', v: 'yes' }] } }));
+    qs.splice(7, 0, q('years', 'standard', { input_modes: modes((m) => { m.primary = 'type'; m.choose.enabled = false; m.type = { ...m.type, enabled: true, format: 'number' }; }), label_en: 'How many years?', show_if: { all: [{ q: 'experience', op: 'eq', v: 'yes' }] } }));
     const ordered = move(qs.map((x, i) => ({ ...x, position: i })), 7, 3);
     const m = msgs(ordered);
     expect(m.some((s) => s.includes('“How many years?” depends on “Have you run a shop before?”') && s.includes('Move “Have you run a shop before?” above'))).toBe(true);
@@ -48,7 +48,7 @@ describe('validateDraft', () => {
   });
 
   it('contact rules', () => {
-    const none = seedForm().filter((x) => x.type !== 'contact');
+    const none = seedForm().filter((x) => x.kind !== 'contact');
     expect(msgs(none).some((s) => s.includes('Contact details'))).toBe(true);
     const two = [...seedForm(), q('contact2', 'contact', { position: 99 })];
     expect(msgs(two).some((s) => s.includes('Keep exactly one'))).toBe(true);
@@ -72,7 +72,7 @@ describe('validateDraft', () => {
 
   it('warns when a path is longer than 9 screens', () => {
     const qs = seedForm();
-    for (let i = 0; i < 3; i++) qs.splice(8, 0, q(`extra_${i}`, 'short_text', { required: false }));
+    for (let i = 0; i < 3; i++) qs.splice(8, 0, q(`extra_${i}`, 'standard', { required: false, input_modes: TEXT() }));
     const issues = validateDraft(qs.map((x, i) => ({ ...x, position: i })));
     expect(hasErrors(issues)).toBe(false);
     expect(issues.filter((i) => i.code === 'path_long')).toHaveLength(3);
@@ -80,13 +80,34 @@ describe('validateDraft', () => {
 
   it('pick limits sanity', () => {
     const qs = seedForm();
-    qs.splice(8, 0, q('features', 'multi', { options: [opt('a'), opt('b')], validation: { minPicks: 3 } }));
+    qs.splice(8, 0, q('features', 'standard', { options: [opt('a'), opt('b')], input_modes: modes((m) => { m.choose.style = 'checkbox'; m.choose.min_picks = 3; }) }));
     expect(msgs(qs.map((x, i) => ({ ...x, position: i }))).some((s) => s.includes('only 2 options'))).toBe(true);
+  });
+
+  it('input modes sanity: at least one mode, primary on, char limits, recording length', () => {
+    const build = (patch: (m: ReturnType<typeof modes>) => void) => {
+      const qs = seedForm();
+      qs.splice(8, 0, q('extra', 'standard', { options: [opt('a'), opt('b')], input_modes: modes(patch) }));
+      return msgs(qs.map((x, i) => ({ ...x, position: i })));
+    };
+    expect(build((m) => { m.choose.enabled = false; }).some((s) => s.includes('at least one way to answer'))).toBe(true);
+    expect(build((m) => { m.type.enabled = true; m.primary = 'speak'; }).some((s) => s.includes('main way to answer'))).toBe(true);
+    expect(build((m) => { m.type = { ...m.type, enabled: true, min_chars: 60, max_chars: 50 }; }).some((s) => s.includes('minimum characters is bigger'))).toBe(true);
+    expect(build((m) => { m.type = { ...m.type, enabled: true, max_chars: 5000 }; }).some((s) => s.includes('between 1 and 2000'))).toBe(true);
+    expect(build((m) => { m.speak = { ...m.speak, enabled: true, max_seconds: 5 }; }).some((s) => s.includes('between 10 and 300'))).toBe(true);
+    expect(build((m) => { m.type = { ...m.type, enabled: true, max_chars: 50 }; m.speak.enabled = true; })).toEqual([]);
+  });
+
+  it('path question must stay choose-only single select', () => {
+    const qs = seedForm();
+    qs[0].input_modes = modes((m) => { m.choose.style = 'checkbox'; });
+    expect(msgs(qs).some((s) => s.includes('choosing exactly one option'))).toBe(true);
   });
 
   it('wrong operator for type', () => {
     const qs = seedForm();
     qs[2].show_if = { all: [{ q: 'business_type', op: 'gte', v: 5 }] };
+    // (gte needs a number / date question)
     expect(msgs(qs).some((s) => s.includes("can't be used with"))).toBe(true);
   });
 });
@@ -100,6 +121,9 @@ describe('compileForm', () => {
     expect(cfg.questions.map((x) => x.key)).not.toContain('about_you');
     expect(cfg.questions[1].options.map((o) => o.value)).not.toContain('restaurant');
     expect(cfg.questions.find((x) => x.key === 'experience')!.options.map((o) => o.value)).toEqual(['yes', 'no']);
+    expect(cfg.schema).toBe(2);
+    expect(cfg.questions.find((x) => x.key === 'rent_budget')!.validation).toEqual({ min: 0, max: 10000000 });
+    expect(cfg.questions.find((x) => x.key === 'experience')!.input_modes).toBeNull();
     expect(cfg.questions.find((x) => x.key === 'contact')!.required).toBe(true);
   });
 });

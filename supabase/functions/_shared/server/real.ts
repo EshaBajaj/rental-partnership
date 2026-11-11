@@ -1,6 +1,6 @@
 // Production wiring: Supabase service client, Groq, Telegram.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { type Db, DbError, type Deps, type Env, type FormVersion, type LeadForNotify, type Property, type Storage } from './deps.ts';
+import { type AuthAdmin, type Db, DbError, type Deps, type Env, type FormVersion, type LeadForNotify, type Property, type Storage } from './deps.ts';
 import { createGroq, DEFAULT_TRANSLATE_MODELS } from './groq.ts';
 import { createTelegram } from './telegram.ts';
 
@@ -19,7 +19,7 @@ export function createDb(sb: SupabaseClient): Db {
       return r.data as T;
     },
     async propertyBySlug(slug) {
-      return must(await sb.from('properties').select('id, slug, name, status, closed_message, default_lang').eq('slug', slug).maybeSingle()) as Property | null;
+      return must(await sb.from('properties').select('id, slug, name, status, closed_message, default_lang, brand_name, contact_phone, contact_whatsapp, address_line, logo_url, shop_photo_url, welcome_title_en, welcome_title_hi, welcome_body_en, welcome_body_hi, default_speech_lang, audio_retention_days').eq('slug', slug).maybeSingle()) as Property | null;
     },
     async currentForm(propertyId) {
       return must(await sb.from('form_versions').select('id, version, config').eq('property_id', propertyId).eq('is_current', true).maybeSingle()) as FormVersion | null;
@@ -62,6 +62,12 @@ export function createDb(sb: SupabaseClient): Db {
     async heartbeat(source) {
       must(await sb.from('heartbeat').insert({ source }));
     },
+    async ownerFromToken(jwt) {
+      const u = await sb.auth.getUser(jwt);
+      if (u.error || !u.data.user) return null;
+      const r = await sb.rpc('sls_is_owner_uid', { p_uid: u.data.user.id });
+      return r.data === true ? u.data.user.id : null;
+    },
     async isAdminToken(jwt) {
       const u = await sb.auth.getUser(jwt);
       if (u.error || !u.data.user) return false;
@@ -95,6 +101,19 @@ export function createStorage(sb: SupabaseClient): Storage {
   };
 }
 
+export function createAuthAdmin(sb: SupabaseClient): AuthAdmin {
+  return {
+    async inviteUser(email, redirectTo) {
+      const existing = await sb.rpc('sls_user_id_by_email', { p_email: email });
+      if (existing.error) throw new DbError('db', existing.error.message);
+      if (existing.data) return { id: existing.data as string, invited: false };
+      const r = await sb.auth.admin.inviteUserByEmail(email, { redirectTo });
+      if (r.error || !r.data.user) throw new DbError('auth', r.error?.message ?? 'Invite failed');
+      return { id: r.data.user.id, invited: true };
+    },
+  };
+}
+
 export function readEnv(): Env {
   const get = (k: string) => Deno.env.get(k) ?? '';
   return {
@@ -115,6 +134,7 @@ export function realDeps(): Deps {
   const models = (Deno.env.get('GROQ_TRANSLATE_MODELS') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   return {
     db: createDb(sb),
+    auth: createAuthAdmin(sb),
     storage: createStorage(sb),
     speech: createGroq(Deno.env.get('GROQ_API_KEY') ?? '', models.length ? models : DEFAULT_TRANSLATE_MODELS),
     messenger: createTelegram(Deno.env.get('TELEGRAM_BOT_TOKEN') ?? '', Deno.env.get('TELEGRAM_CHAT_ID') ?? ''),

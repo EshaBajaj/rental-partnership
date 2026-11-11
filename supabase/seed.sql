@@ -1,5 +1,5 @@
 -- Demo property, questionnaire (v1) and Ideal Profiles (v1).
--- Mirrors apps/web/test/fixtures.ts → seedForm(). Safe to run once on an empty project.
+-- Mirrors apps/web/test/fixtures.ts → seedForm(). Safe to run more than once (does nothing if the property exists).
 
 do $$
 declare
@@ -13,11 +13,16 @@ begin
     return;
   end if;
 
-  insert into public.properties (slug, name) values ('main-road-shop', 'Main Road Shop') returning id into prop;
+  insert into public.properties (slug, name, brand_name, address_line, welcome_title_en, welcome_title_hi, welcome_body_en, welcome_body_hi)
+  values ('main-road-shop', 'Main Road Shop', 'Bajaj Computers', 'Main Road',
+          'A shop is available on Main Road', 'मेन रोड पर एक दुकान उपलब्ध है',
+          'Tell us a little about your plans — to rent it, or to run it in partnership with us.',
+          'अपनी योजना के बारे में थोड़ा बताइए — किराये पर लेना चाहते हैं या हमारे साथ साझेदारी में चलाना।')
+  returning id into prop;
 
   -- 0 path
-  insert into public.questions (property_id, key, type, label_en, label_hi, position)
-  values (prop, 'path', 'single', 'Are you looking to rent this shop or partner with us?', 'क्या आप यह दुकान किराये पर लेना चाहते हैं या हमारे साथ साझेदारी करना चाहते हैं?', 0)
+  insert into public.questions (property_id, key, kind, input_modes, label_en, label_hi, position)
+  values (prop, 'path', 'standard', public.sls_default_modes(), 'Are you looking to rent this shop or partner with us?', 'क्या आप यह दुकान किराये पर लेना चाहते हैं या हमारे साथ साझेदारी करना चाहते हैं?', 0)
   returning id into q;
   insert into public.question_options (question_id, value, label_en, label_hi, position) values
     (q, 'rent', 'Rent the shop', 'दुकान किराये पर लेना', 0),
@@ -25,8 +30,8 @@ begin
     (q, 'either', 'Open to either', 'दोनों में से कोई भी', 2);
 
   -- 1 business_type
-  insert into public.questions (property_id, key, type, label_en, label_hi, position, allow_other)
-  values (prop, 'business_type', 'single', 'What business do you want to run here?', 'आप यहाँ कौन सा व्यवसाय चलाना चाहते हैं?', 1, true)
+  insert into public.questions (property_id, key, kind, input_modes, label_en, label_hi, position)
+  values (prop, 'business_type', 'standard', jsonb_set(public.sls_default_modes(), '{choose,allow_other}', 'true'), 'What business do you want to run here?', 'आप यहाँ कौन सा व्यवसाय चलाना चाहते हैं?', 1)
   returning id into q;
   insert into public.question_options (question_id, value, label_en, label_hi, position) values
     (q, 'grocery', 'Grocery / Kirana', 'किराना', 0),
@@ -37,8 +42,8 @@ begin
     (q, 'restaurant', 'Restaurant / food', 'रेस्टोरेंट / खाना', 5);
 
   -- 2 start_when
-  insert into public.questions (property_id, key, type, label_en, label_hi, position)
-  values (prop, 'start_when', 'single', 'When do you want to start?', 'आप कब शुरू करना चाहते हैं?', 2)
+  insert into public.questions (property_id, key, kind, input_modes, label_en, label_hi, position)
+  values (prop, 'start_when', 'standard', public.sls_default_modes(), 'When do you want to start?', 'आप कब शुरू करना चाहते हैं?', 2)
   returning id into q;
   insert into public.question_options (question_id, value, label_en, label_hi, position) values
     (q, 'immediately', 'Immediately', 'तुरंत', 0),
@@ -47,14 +52,14 @@ begin
     (q, 'later', 'Later / not sure', 'बाद में / पक्का नहीं', 3);
 
   -- 3 rent_budget (rent, either)
-  insert into public.questions (property_id, key, type, label_en, label_hi, help_en, help_hi, position, validation, show_if)
-  values (prop, 'rent_budget', 'currency', 'How much monthly rent can you pay?', 'आप हर महीने कितना किराया दे सकते हैं?',
+  insert into public.questions (property_id, key, kind, input_modes, label_en, label_hi, help_en, help_hi, position, validation, show_if)
+  values (prop, 'rent_budget', 'standard', (public.sls_default_modes() || '{"primary":"type","choose":{"enabled":false,"style":"radio","min_picks":null,"max_picks":null,"allow_other":false,"other_max_chars":200},"type":{"enabled":true,"multiline":false,"min_chars":null,"max_chars":15,"placeholder_en":"50000","placeholder_hi":null,"format":"currency"}}'::jsonb), 'How much monthly rent can you pay?', 'आप हर महीने कितना किराया दे सकते हैं?',
           'In rupees per month', 'रुपये प्रति माह', 3, '{"min":0,"max":10000000}',
           '{"any":[{"q":"path","op":"in","v":["rent","either"]}]}');
 
   -- 4 lease_years (rent)
-  insert into public.questions (property_id, key, type, label_en, label_hi, position, show_if)
-  values (prop, 'lease_years', 'single', 'For how many years do you want the lease?', 'आप कितने साल के लिए लीज़ चाहते हैं?', 4,
+  insert into public.questions (property_id, key, kind, input_modes, label_en, label_hi, position, show_if)
+  values (prop, 'lease_years', 'standard', public.sls_default_modes(), 'For how many years do you want the lease?', 'आप कितने साल के लिए लीज़ चाहते हैं?', 4,
           '{"all":[{"q":"path","op":"eq","v":"rent"}]}')
   returning id into q;
   insert into public.question_options (question_id, value, label_en, label_hi, position) values
@@ -63,14 +68,14 @@ begin
     (q, '5_plus', 'More than 5 years', '5 साल से ज़्यादा', 2);
 
   -- 5 investment (partner, either)
-  insert into public.questions (property_id, key, type, label_en, label_hi, help_en, help_hi, position, validation, show_if)
-  values (prop, 'investment', 'currency', 'How much can you invest in the partnership?', 'आप साझेदारी में कितना निवेश कर सकते हैं?',
+  insert into public.questions (property_id, key, kind, input_modes, label_en, label_hi, help_en, help_hi, position, validation, show_if)
+  values (prop, 'investment', 'standard', (public.sls_default_modes() || '{"primary":"type","choose":{"enabled":false,"style":"radio","min_picks":null,"max_picks":null,"allow_other":false,"other_max_chars":200},"type":{"enabled":true,"multiline":false,"min_chars":null,"max_chars":15,"placeholder_en":"50000","placeholder_hi":null,"format":"currency"}}'::jsonb), 'How much can you invest in the partnership?', 'आप साझेदारी में कितना निवेश कर सकते हैं?',
           'Total amount in rupees', 'कुल रकम रुपये में', 5, '{"min":0}',
           '{"any":[{"q":"path","op":"in","v":["partner","either"]}]}');
 
   -- 6 partner_role (partner)
-  insert into public.questions (property_id, key, type, label_en, label_hi, position, show_if)
-  values (prop, 'partner_role', 'single', 'What role would you like in the partnership?', 'साझेदारी में आप क्या भूमिका चाहते हैं?', 6,
+  insert into public.questions (property_id, key, kind, input_modes, label_en, label_hi, position, show_if)
+  values (prop, 'partner_role', 'standard', public.sls_default_modes(), 'What role would you like in the partnership?', 'साझेदारी में आप क्या भूमिका चाहते हैं?', 6,
           '{"all":[{"q":"path","op":"eq","v":"partner"}]}')
   returning id into q;
   insert into public.question_options (question_id, value, label_en, label_hi, position) values
@@ -78,16 +83,16 @@ begin
     (q, 'sleeping', 'Investor only', 'सिर्फ़ निवेशक', 1);
 
   -- 7 experience
-  insert into public.questions (property_id, key, type, label_en, label_hi, position)
+  insert into public.questions (property_id, key, kind, label_en, label_hi, position)
   values (prop, 'experience', 'yes_no', 'Have you run a shop before?', 'क्या आपने पहले कोई दुकान चलाई है?', 7);
 
   -- 8 about_you (voice, optional)
-  insert into public.questions (property_id, key, type, label_en, label_hi, help_en, help_hi, position, required)
-  values (prop, 'about_you', 'voice', 'Tell us about your plan', 'अपनी योजना के बारे में बताइए',
+  insert into public.questions (property_id, key, kind, input_modes, label_en, label_hi, help_en, help_hi, position, required)
+  values (prop, 'about_you', 'standard', (public.sls_default_modes() || '{"primary":"speak","choose":{"enabled":false,"style":"radio","min_picks":null,"max_picks":null,"allow_other":false,"other_max_chars":200},"type":{"enabled":true,"multiline":true,"min_chars":null,"max_chars":1000,"placeholder_en":null,"placeholder_hi":null,"format":"any"},"speak":{"enabled":true,"max_seconds":120,"live_transcript":true,"allow_edit":true,"keep_audio":true}}'::jsonb), 'Tell us about your plan', 'अपनी योजना के बारे में बताइए',
           'Tap the mic and speak in Hindi or English, or type.', 'माइक दबाकर हिंदी या अंग्रेज़ी में बोलिए, या लिखिए।', 8, false);
 
   -- 9 contact
-  insert into public.questions (property_id, key, type, label_en, label_hi, position)
+  insert into public.questions (property_id, key, kind, label_en, label_hi, position)
   values (prop, 'contact', 'contact', 'How can we reach you?', 'हम आपसे कैसे संपर्क करें?', 9);
 
   perform public.publish_form(prop);
