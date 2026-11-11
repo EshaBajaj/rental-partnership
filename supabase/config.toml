@@ -1,0 +1,49 @@
+# Supabase CLI project config (used by `supabase link/db push/functions deploy`).
+project_id = "shop-lead-screener"
+
+[api]
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+enable_signup = false          # admins are invited; nobody can self-register
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+
+[storage]
+file_size_limit = "10MiB"
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+# Public endpoints do their own validation / rate limiting; internal ones check CRON_SECRET.
+[functions.form]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+[functions.track]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+[functions.voice-upload-url]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+[functions.transcribe-now]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+[functions.transcribe-worker]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+[functions.submit]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+[functions.notify]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+[functions.health]
+verify_jwt = false
+import_map = "./functions/import_map.json"
