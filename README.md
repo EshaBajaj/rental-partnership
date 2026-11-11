@@ -18,8 +18,4 @@ lead against the owner's *Ideal Profiles* and explains every ranking.
 npm install
 ```
 
-```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres npm run check
-```
-
 See **docs/DEPLOY.md** to go live.

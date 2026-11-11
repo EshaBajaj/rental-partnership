@@ -191,10 +191,6 @@ npm run dev
 Tests (need Postgres ≥ 15 and Deno 2; `DATABASE_URL` points at a server where you may create databases):
 
 ```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres npm run check
-```
-
-```bash
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres bash scripts/e2e.sh
 ```
 
