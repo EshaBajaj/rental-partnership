@@ -86,3 +86,25 @@ begin
   -- audit trail exists for config changes
   perform t.ok((select count(*) from public.audit_log where table_name = 'questions') > 0, 'audited');
 end $$;
+
+-- option removal shrinks draft profile conditions / never rules atomically
+do $$
+declare prop uuid := (select id from public.properties where slug = 'main-road-shop');
+  qbiz uuid := (select id from public.questions where key = 'business_type');
+  d uuid; c uuid; n uuid; oid uuid;
+begin
+  d := public.create_profile_draft(prop);
+  insert into public.profile_conditions (profile_id, question_key, operator, value, importance)
+  values ((select id from public.profiles where profile_set_id = d order by position limit 1), 'business_type', 'in', '["grocery","pharmacy"]', 'nice')
+  returning id into c;
+  update public.never_rules set operator = 'in', value = '["restaurant","pharmacy"]' where profile_set_id = d returning id into n;
+  oid := (select id from public.question_options where question_id = qbiz and value = 'pharmacy');
+  -- without the rewrites: refused, and nothing changed
+  perform t.throws(format('select public.remove_question_or_option(%L, %L)', qbiz, oid), 'Still used in draft profiles', 'blocked');
+  perform t.eq((select value from public.profile_conditions where id = c), '["grocery","pharmacy"]'::jsonb, 'untouched after failure');
+  -- with the rewrites: one transaction
+  perform t.eq(public.remove_question_or_option(qbiz, oid, '{}'::jsonb, '{}', '{}',
+                 jsonb_build_object(c, '["grocery"]'::jsonb), jsonb_build_object(n, '["restaurant"]'::jsonb)), 'archived', 'archived');
+  perform t.eq((select value from public.profile_conditions where id = c), '["grocery"]'::jsonb, 'condition shrunk');
+  perform t.eq((select value from public.never_rules where id = n), '["restaurant"]'::jsonb, 'never rule shrunk');
+end $$;

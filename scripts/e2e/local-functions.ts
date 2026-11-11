@@ -11,6 +11,7 @@ import { makeHandler as transcribeNow } from '../../supabase/functions/transcrib
 import { makeHandler as worker } from '../../supabase/functions/transcribe-worker/handler.ts';
 import { makeHandler as notify } from '../../supabase/functions/notify/handler.ts';
 import { makeHandler as health } from '../../supabase/functions/health/handler.ts';
+import { handleSupabase } from './mini-supabase.ts';
 
 const PORT = Number(Deno.env.get('PORT') ?? 54400);
 const sql = postgres(Deno.env.get('DATABASE_URL')!, { max: 5, onnotice: () => {} });
@@ -64,7 +65,9 @@ const db: Db = {
     return (r as never) ?? null;
   },
   async insertFunnelEvents(rows) {
-    await sql`insert into public.funnel_events ${sql(rows as never[], 'property_id', 'session_id', 'event', 'question_key', 'ms', 'ip_hash')}`;
+    await sql`insert into public.funnel_events (property_id, session_id, event, question_key, ms, ip_hash)
+              select property_id, session_id, event, question_key, ms, ip_hash
+              from json_populate_recordset(null::public.funnel_events, ${sql.json(rows as never)}::json)`;
   },
   async leadForNotify(id) {
     const [r] = await sql`select r.*, p.name as property_name from public.responses r join public.properties p on p.id = r.property_id where r.id = ${id}`;
@@ -148,6 +151,8 @@ Deno.serve({ port: PORT, onListen: () => console.log(`local functions on :${PORT
     return new Response('{"Key":"ok"}', { headers: { ...cors, 'content-type': 'application/json' } });
   }
   if (url.pathname === '/__sent') return Response.json(sent, { headers: cors });
+  const sb = await handleSupabase(req, sql, STORE, `http://localhost:${PORT}`);
+  if (sb) return sb;
   const name = url.pathname.replace(/^\/functions\/v1\//, '');
   const h = handlers[name];
   if (!h) return new Response('not found', { status: 404 });

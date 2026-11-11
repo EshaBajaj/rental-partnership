@@ -11,6 +11,10 @@ export default defineConfig({
     },
   },
   server: { fs: { allow: ['../..'] } },
+  // local demo only (scripts/demo.sh): one port serves the app and the local API stand-in
+  preview: {
+    proxy: Object.fromEntries(['/functions', '/rest', '/auth', '/storage'].map((p) => [p, 'http://localhost:54400'])),
+  },
   build: {
     target: 'es2020',
     sourcemap: false,

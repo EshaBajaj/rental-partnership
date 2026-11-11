@@ -20,6 +20,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
+for port in 54400 4173; do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then echo "port $port is already in use — stop the old server first"; exit 1; fi
+done
+
 "${PSQL[@]}" "$ADMIN_URL" -c "create database ${DB}" >/dev/null
 if [[ "$("${PSQL[@]}" -tA "$E2E_URL" -c "select count(*) from pg_namespace where nspname = 'auth'")" == "0" ]]; then
   "${PSQL[@]}" "$E2E_URL" -f "$ROOT/supabase/tests/_supabase_stub.sql" >/dev/null 2>&1
@@ -32,8 +36,9 @@ PORT=54400 DATABASE_URL="$E2E_URL" STORE_DIR="$STORE" "$DENO" run --allow-net --
   --config "$ROOT/supabase/functions/deno.json" "$ROOT/scripts/e2e/local-functions.ts" > /tmp/sls-e2e-functions.log 2>&1 &
 PIDS+=($!)
 
-(cd "$WEB_DIR" && VITE_FUNCTIONS_URL="http://localhost:54400/functions/v1" VITE_SUPABASE_URL="http://localhost:54400" VITE_SUPABASE_ANON_KEY="e2e" npx vite build >/dev/null)
-(cd "$WEB_DIR" && npx vite preview --port 4173 --strictPort > /tmp/sls-e2e-preview.log 2>&1) &
+(cd "$WEB_DIR" && VITE_FUNCTIONS_URL="http://localhost:54400/functions/v1" VITE_SUPABASE_URL="http://localhost:54400" VITE_SUPABASE_ANON_KEY="e2e" "$ROOT/node_modules/.bin/vite" build >/dev/null)
+VITE_BIN="$ROOT/node_modules/.bin/vite"
+(cd "$WEB_DIR" && exec "$VITE_BIN" preview --port 4173 --strictPort > /tmp/sls-e2e-preview.log 2>&1) &
 PIDS+=($!)
 
 for i in $(seq 1 60); do
@@ -45,3 +50,6 @@ echo "✓ local functions + web preview up"
 
 APP_URL="http://localhost:4173" FN_URL="http://localhost:54400" DATABASE_URL="$E2E_URL" SHOTS_DIR="${SHOTS_DIR:-}" \
   node "$ROOT/scripts/e2e/respondent.e2e.mjs"
+
+APP_URL="http://localhost:4173" DATABASE_URL="$E2E_URL" SHOTS_DIR="${SHOTS_DIR:-}" \
+  node "$ROOT/scripts/e2e/admin.e2e.mjs"
