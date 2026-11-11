@@ -1,0 +1,21 @@
+name: Health & keep-alive
+# Every 6 hours: deep health check (pg_cron heartbeat, worker, stuck voice notes, failed
+# notifications, Groq models). A failure turns the run red → GitHub emails the repo owner.
+# The request also keeps the free Supabase project from pausing for inactivity.
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check health
+        run: |
+          code=$(curl -s -o body.json -w '%{http_code}' -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/health?deep=1")
+          cat body.json; echo
+          test "$code" = "200"
+      - name: Check the public form page
+        run: curl -fsS -o /dev/null "${{ vars.APP_URL }}/f/${{ vars.DEFAULT_SLUG || 'main-road-shop' }}"

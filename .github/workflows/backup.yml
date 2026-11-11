@@ -1,0 +1,36 @@
+name: Nightly backup
+# Encrypted nightly dump of the database (schema + data incl. leads and transcripts) kept as a
+# workflow artifact for 30 days. Keep this repository PRIVATE. Restore steps: docs/DEPLOY.md.
+on:
+  schedule:
+    - cron: '41 21 * * *' # 03:11 IST
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.122.1 }
+      - name: Dump
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          stamp=$(date -u +%Y%m%dT%H%MZ)
+          mkdir dump
+          supabase db dump --db-url "$DB_URL" -f dump/roles.sql --role-only
+          supabase db dump --db-url "$DB_URL" -f dump/schema.sql
+          supabase db dump --db-url "$DB_URL" -f dump/data.sql --use-copy --data-only
+          tar czf "backup-$stamp.tgz" dump
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+      - name: Encrypt
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase "${{ secrets.BACKUP_PASSPHRASE }}" \
+              --symmetric --cipher-algo AES256 -o "backup-$STAMP.tgz.gpg" "backup-$STAMP.tgz"
+          rm "backup-$STAMP.tgz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ env.STAMP }}
+          path: backup-*.tgz.gpg
+          retention-days: 30

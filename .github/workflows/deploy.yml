@@ -1,0 +1,94 @@
+name: Deploy
+# Production deploy: database migrations → Edge Functions (+ secrets) → web app on Cloudflare Pages.
+# Runs on push to main after CI passes, or manually.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.122.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+
+      - name: Link project
+        run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Apply database migrations (+ idempotent seed for the first property)
+        run: supabase db push --include-seed --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Store Vault secrets used by pg_cron to call the worker
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          psql "$DB_URL" -X -q -v ON_ERROR_STOP=1 \
+            -v url="https://$PROJECT_REF.supabase.co" -v secret="$CRON_SECRET" <<'SQL'
+          select set_config('sls.url', :'url', false), set_config('sls.secret', :'secret', false);
+          do $$
+          declare k text; v text; sid uuid;
+          begin
+            foreach k in array array['project_url', 'cron_secret'] loop
+              v := case k when 'project_url' then current_setting('sls.url') else current_setting('sls.secret') end;
+              select id into sid from vault.secrets where name = k;
+              if sid is null then perform vault.create_secret(v, k, 'Shop Lead Screener cron');
+              else perform vault.update_secret(sid, v, k, 'Shop Lead Screener cron'); end if;
+            end loop;
+          end $$;
+          SQL
+
+      - name: Set function secrets
+        run: |
+          supabase secrets set --project-ref "$PROJECT_REF" \
+            GROQ_API_KEY="${{ secrets.GROQ_API_KEY }}" \
+            TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+            TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            IP_SALT="${{ secrets.IP_SALT }}" \
+            CRON_SECRET="${{ secrets.CRON_SECRET }}" \
+            ADMIN_APP_URL="${{ vars.APP_URL }}" \
+            ALLOWED_ORIGINS="${{ vars.APP_URL }}" \
+            GROQ_TRANSLATE_MODELS="${{ vars.GROQ_TRANSLATE_MODELS || 'llama-3.1-8b-instant,llama-3.3-70b-versatile' }}"
+
+      - name: Deploy Edge Functions
+        run: |
+          for f in form track voice-upload-url transcribe-now transcribe-worker submit notify health; do
+            supabase functions deploy "$f" --project-ref "$PROJECT_REF" --no-verify-jwt --import-map supabase/functions/import_map.json
+          done
+
+      - name: Build web app
+        run: npm ci && npm run build && npm run check:bundle
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          VITE_DEFAULT_SLUG: ${{ vars.DEFAULT_SLUG || 'main-road-shop' }}
+
+      - name: Deploy to Cloudflare Pages
+        run: npx --yes wrangler@4.160.0 pages deploy apps/web/dist --project-name "${{ vars.CLOUDFLARE_PAGES_PROJECT }}" --branch main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Smoke test
+        run: |
+          sleep 10
+          curl -fsS "https://$PROJECT_REF.supabase.co/functions/v1/form?slug=${{ vars.DEFAULT_SLUG || 'main-road-shop' }}" | head -c 300; echo
+          curl -fsS -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" "https://$PROJECT_REF.supabase.co/functions/v1/health?deep=1"
