@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ADMIN_URL="${DATABASE_URL:-postgresql://postgres@localhost:54329/postgres?host=/tmp}"
+ADMIN_URL="${DATABASE_URL:-postgresql://postgres@localhost:54329/postgres}"
 DB="sls_test_$$"
 PSQL=(psql -X -q -v ON_ERROR_STOP=1)
 
